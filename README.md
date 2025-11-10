@@ -1,6 +1,8 @@
 # Lunar Astrodynamics Simulation
+[![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) <!-- Optional Badge -->
+![Lunar Astrodynamics Simulation](assets/social/github-social-card-lunar-astrodynamics.png)
 
 Python simulation of lunar orbital mechanics. Models spacecraft dynamics under the Moon's non-uniform gravity field (J2, mascons) using numerical integration (SciPy). Astrodynamics example.
 
@@ -10,7 +12,7 @@ This repository contains code to simulate the orbit of a satellite around the Mo
 
 The simulation starts with the basic 2-body problem (Keplerian orbit) and then introduces the J2 perturbation (due to the Moon's oblateness) as a first-order correction. Explanations and code structure are provided to facilitate understanding and potential expansion to include higher-order terms like mascons.
 
-**Coordinate System:** Moon-Centered Inertial (MCI) frame. Origin at the Moon's center. Axes fixed relative to distant stars.
+**Coordinate System.** Moon-Centered Inertial (MCI) frame. Origin at the Moon's center. Axes fixed relative to distant stars.
 
 ## Background & Physics
 
@@ -23,8 +25,8 @@ In the simplest model, only the Moon's gravity, treated as a point mass, is cons
 ### 2. J2 Perturbation (Oblateness)
 
 The Moon is not perfectly spherical; it bulges slightly at the equator. The J2 coefficient quantifies the dominant part of this oblateness. This asymmetry adds a perturbing acceleration component, which primarily causes:
-*   **Nodal Precession:** Rotation of the orbital plane around the Moon's polar axis.
-*   **Apsidal Precession:** Rotation of the orbit's orientation within its plane.
+*   **Nodal Precession.** Rotation of the orbital plane around the Moon's polar axis.
+*   **Apsidal Precession.** Rotation of the orbit's orientation within its plane.
 The specific equations for the J2 acceleration depend on the J2 coefficient, the Moon's gravitational parameter and radius, and the satellite's position, as shown in the notebook.
 
 ### 3. Mascons & Higher-Order Terms (Not Implemented Here)
@@ -58,9 +60,9 @@ Observe the slight deviations caused by the J2 effect, primarily manifesting as 
 
 ## Limitations
 
-*   **Gravity Model:** Only includes the J2 perturbation. Higher-order terms (mascons) are not implemented.
-*   **Other Perturbations:** Does not account for third-body gravity (Earth, Sun), solar radiation pressure, atmospheric drag (negligible for Moon), or relativistic effects.
-*   **Coordinate System:** Uses a simplified MCI frame; does not account for frame precession/nutation.
+*   **Gravity Model.** Only includes the J2 perturbation. Higher-order terms (mascons) are not implemented.
+*   **Other Perturbations.** Does not account for third-body gravity (Earth, Sun), solar radiation pressure, atmospheric drag (negligible for Moon), or relativistic effects.
+*   **Coordinate System.** Uses a simplified MCI frame; does not account for frame precession/nutation.
 
 ## Future Work
 
@@ -72,8 +74,6 @@ Observe the slight deviations caused by the J2 effect, primarily manifesting as 
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT. See [LICENSE](LICENSE).
 
-## Author
-
-*   **Sylvester Kaczmarek** - [GitHub Profile](https://github.com/SJKaczmarek) <!-- Link to your main profile -->
+© **Sylvester Kaczmarek** · https://www.sylvesterkaczmarek.com
