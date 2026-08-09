@@ -24,14 +24,26 @@ class PropagationSettings:
     velocity_atol_m_s: float = 1e-9
     max_step_s: float = np.inf
 
+    def __post_init__(self) -> None:
+        if not self.method:
+            raise ValueError("integration method must be non-empty")
+        if not np.isfinite(self.rtol) or self.rtol <= 0.0:
+            raise ValueError("rtol must be finite and positive")
+        if not np.isfinite(self.position_atol_m) or self.position_atol_m <= 0.0:
+            raise ValueError("position_atol_m must be finite and positive")
+        if not np.isfinite(self.velocity_atol_m_s) or self.velocity_atol_m_s <= 0.0:
+            raise ValueError("velocity_atol_m_s must be finite and positive")
+        if self.max_step_s <= 0.0 or np.isnan(self.max_step_s):
+            raise ValueError("max_step_s must be positive")
+
     @property
     def atol(self) -> FloatArray:
         return np.array([self.position_atol_m] * 3 + [self.velocity_atol_m_s] * 3, dtype=float)
 
 
 def make_surface_event(collision_radius_m: float):
-    if collision_radius_m <= 0.0:
-        raise ValueError("collision_radius_m must be positive")
+    if not np.isfinite(collision_radius_m) or collision_radius_m <= 0.0:
+        raise ValueError("collision_radius_m must be finite and positive")
 
     def surface_event(_time_s: float, state: ArrayLike, *_args: object) -> float:
         return float(np.linalg.norm(np.asarray(state, dtype=float)[:3]) - collision_radius_m)
@@ -52,6 +64,8 @@ def _validate_common(
         raise ValueError("initial_state must be a finite six-vector")
     if duration_s <= 0.0 or not np.isfinite(duration_s):
         raise ValueError("duration_s must be finite and positive")
+    if not np.isfinite(collision_radius_m) or collision_radius_m <= 0.0:
+        raise ValueError("collision_radius_m must be finite and positive")
     if float(np.linalg.norm(y0[:3])) <= collision_radius_m:
         raise ValueError("initial state is at or below the mean lunar surface")
 
@@ -60,6 +74,8 @@ def _validate_common(
         t_eval = np.asarray(sample_times_s, dtype=float)
         if t_eval.ndim != 1 or t_eval.size == 0:
             raise ValueError("sample_times_s must be a non-empty one-dimensional array")
+        if not np.all(np.isfinite(t_eval)):
+            raise ValueError("sample_times_s must contain only finite values")
         if t_eval[0] < 0.0 or t_eval[-1] > duration_s or np.any(np.diff(t_eval) <= 0.0):
             raise ValueError("sample_times_s must be strictly increasing within [0, duration_s]")
     return y0, t_eval
