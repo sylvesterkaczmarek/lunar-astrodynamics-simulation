@@ -29,18 +29,18 @@ The repository deliberately keeps the low-degree J2 benchmark because it provide
 - closed-form J2 perturbation
 - geodesy 4π-normalized spherical harmonics
 - arbitrary `Cnm/Snm` degree and order truncation
-- NASA PDS SHADR parsing
+- NASA PDS SHADR parsing using the published fixed-column record layout
 - GRGM1200A metadata and download tooling
 - body-fixed harmonic acceleration
 - body-fixed to inertial force transformation
 - optional SPICE frame transformations
 - terminal mean-radius surface event
 
-The evaluator is stress-tested through degree 1200. The 88 MB GRGM1200A coefficient table remains an external NASA data product and is not copied into this repository.
+The evaluator is stress-tested through degree 1200. The SHADR reader is regression-tested with byte-faithful 244-byte header and 122-byte coefficient records matching the PDS specification, including arbitrary coefficient ordering, malformed-row rejection, and duplicate detection. The 88 MB GRGM1200A coefficient table remains an external NASA data product and is not copied into this repository.
 
 ## Validation
 
-The current automated suite contains 24 tests. It includes two independent checks that are particularly useful for the harmonic implementation:
+The current automated suite contains 34 tests. It includes two independent checks that are particularly useful for the harmonic implementation:
 
 | Check | Result |
 |---|---:|
