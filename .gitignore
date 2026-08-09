@@ -12,3 +12,5 @@ venv/
 build/
 dist/
 .ipynb_checkpoints/
+data/*.tab
+data/*.lbl

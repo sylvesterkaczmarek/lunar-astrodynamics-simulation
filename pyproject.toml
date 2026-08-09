@@ -1,11 +1,11 @@
 [build-system]
-requires = ["setuptools>=70"]
+requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "lunar-astrodynamics-simulation"
-version = "0.2.0"
-description = "Validated Python demonstration of low lunar orbit propagation with central gravity and the Moon's J2 perturbation."
+version = "0.3.0"
+description = "Validated lunar orbit simulation with J2 and GRAIL spherical-harmonic gravity models."
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
@@ -17,6 +17,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8,<10"]
+spice = ["spiceypy>=6,<8"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

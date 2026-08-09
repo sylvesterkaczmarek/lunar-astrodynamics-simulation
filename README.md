@@ -6,35 +6,55 @@
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-yellow.svg)
 
-Validated Python demonstration of low lunar orbit propagation with central gravity and the Moon's J2 perturbation. The repository uses a non-singular inclined, mildly eccentric orbit so that nodal and apsidal precession are observable and can be checked against first-order analytical J2 theory.
+Validated Python simulation of lunar orbital dynamics from central gravity and J2 through high-degree GRAIL spherical harmonics. The code reads NASA PDS SHADR gravity products, evaluates fully normalized `Cnm/Snm` fields in the lunar body-fixed frame, and supports explicit rotation back to an inertial propagation frame.
 
 ## At a glance
 
 ```mermaid
 flowchart LR
-    A[Orbital elements] --> B[Cartesian initial state]
-    B --> C[DOP853 propagation]
-    C --> D[Central gravity plus J2]
-    D --> E[Osculating elements]
-    E --> F[Analytical rate comparison]
-    F --> G[JSON metrics and figure]
+    A[GRAIL SHADR coefficients] --> B[4pi-normalized parser]
+    B --> C[Body-fixed harmonic potential]
+    C --> D[Analytical gravity gradient]
+    D --> E[Frame rotation]
+    E --> F[Inertial propagation]
+    G[J2 closed form] --> H[Secular-rate validation]
+    B --> I[C20 versus J2 validation]
 ```
 
-The central validation question is simple: does the integrated J2 model reproduce the expected secular rates of right ascension of the ascending node and argument of periapsis while preserving the invariants that an axisymmetric field should preserve?
+The repository deliberately keeps the low-degree J2 benchmark because it provides an independent analytical check on the numerical machinery. The spherical-harmonic layer then adds longitude-dependent tesseral and sectoral gravity terms, including the high-degree gravity signatures associated with lunar mascons.
 
-![J2 precession validation](assets/results/j2_precession.svg)
+## Implemented models
 
-## What changed from the original notebook
+- central lunar gravity
+- closed-form J2 perturbation
+- geodesy 4π-normalized spherical harmonics
+- arbitrary `Cnm/Snm` degree and order truncation
+- NASA PDS SHADR parsing
+- GRGM1200A metadata and download tooling
+- body-fixed harmonic acceleration
+- body-fixed to inertial force transformation
+- optional SPICE frame transformations
+- terminal mean-radius surface event
 
-- Corrected the lunar GM and separated gravity-model reference radius from physical mean radius.
-- Replaced the exactly equatorial circular example with an inclined, eccentric orbit where RAAN and periapsis are defined.
-- Added Cartesian and classical-element conversions.
-- Added analytical first-order J2 secular-rate calculations.
-- Switched the reference propagator to SciPy `DOP853` with separate position and velocity absolute tolerances.
-- Added terminal mean-radius surface-impact detection.
-- Added quantitative regression tests rather than treating solver completion as physics validation.
-- Documented why full GRAIL harmonics require a lunar body-fixed principal-axes frame.
-- Added packaging, CI, reproducibility documentation, machine-readable results, and citation metadata.
+The evaluator is stress-tested through degree 1200. The 88 MB GRGM1200A coefficient table remains an external NASA data product and is not copied into this repository.
+
+## Validation
+
+The current automated suite contains 24 tests. It includes two independent checks that are particularly useful for the harmonic implementation:
+
+| Check | Result |
+|---|---:|
+| Normalized `C20` acceleration versus closed-form J2 | `1.78e-16` relative difference |
+| Tesseral analytical acceleration versus finite-difference potential gradient | `9.86e-10` relative difference |
+
+The original 40-orbit J2 regression remains unchanged:
+
+| Quantity | Analytical | Numerical | Relative difference |
+|---|---:|---:|---:|
+| RAAN rate | -0.773273 deg/day | -0.773527 deg/day | 0.033% |
+| Periapsis-argument rate | 0.820180 deg/day | 0.817987 deg/day | 0.267% |
+
+See [`results/j2_validation.json`](results/j2_validation.json) and [`results/harmonic_validation.json`](results/harmonic_validation.json).
 
 ## Quick start
 
@@ -46,42 +66,68 @@ source .venv/bin/activate
 python -m pip install -e .[dev]
 python -m pytest
 python examples/j2_precession.py --orbits 40
+python examples/harmonic_validation.py
 ```
 
 Windows PowerShell users can activate the environment with `.venv\Scripts\Activate.ps1`.
 
-## Model
+## Use GRGM1200A
 
-The implemented acceleration is central lunar gravity plus the axisymmetric J2 perturbation. The low-degree demonstration uses the GRGM1200A reference radius and GM, with a rounded GRGM1200A J2 value. The impact boundary uses the JPL mean lunar radius.
+Download the official NASA PDS product:
 
-See [docs/model.md](docs/model.md) for equations, parameter provenance, frame assumptions, and exclusions.
+```bash
+python scripts/download_grgm1200a.py
+```
 
-## Validation
+Then evaluate the full degree/order 1200 field at a body-fixed point:
 
-The automated tests cover:
+```bash
+python examples/grgm1200a_gravity.py \
+  --model data/gggrx_1200a_sha.tab \
+  --degree 1200 \
+  --position-km 1900 200 300
+```
 
-- two-body specific-energy conservation
-- two-body angular-momentum conservation
-- axial angular-momentum conservation under J2
-- numerical versus analytical J2 nodal precession
-- numerical versus analytical J2 apsidal precession
-- singular orbital-element handling
-- terminal surface-impact detection
-- invalid below-surface initial states
-- default integration convergence against a tighter numerical reference
+The archived GRGM1200A metadata used by the code are GM `4902.80011526323 km^3/s^2`, reference radius `1738.0 km`, geodesy 4π normalization, and a DE430-defined lunar principal-axes body-fixed frame.
 
-The full example stores the measured rates and relative errors in [`results/j2_validation.json`](results/j2_validation.json).
+## Inertial propagation
 
-## Results snapshot
+High-degree lunar gravity must not be frozen in an inertial frame. Supply an explicit body-fixed-from-inertial rotation:
 
-The checked-in 40-orbit regression run gives:
+```python
+from lunar_astrodynamics import (
+    gravity_acceleration_inertial,
+    propagate_with_acceleration,
+    spice_rotation_provider,
+)
 
-| Quantity | Analytical | Numerical | Relative difference |
-|---|---:|---:|---:|
-| RAAN rate | -0.773273 deg/day | -0.773527 deg/day | 0.033% |
-| Periapsis-argument rate | 0.820180 deg/day | 0.817987 deg/day | 0.267% |
+rotation = spice_rotation_provider(
+    "J2000",
+    "YOUR_LOADED_LUNAR_PA_FRAME",
+    et_offset_s=et0,
+)
 
-The same run preserves axial angular momentum with a relative span of about `4.0e-12`. After five orbits, the default integrator differs from a tighter numerical reference by about `4.5e-05 m` in position. The validation orbit does not intersect the mean-radius lunar surface. These are low-degree J2 validation results, not mission-grade orbit-prediction accuracy claims.
+acceleration = lambda t, r: gravity_acceleration_inertial(
+    t,
+    r,
+    model,
+    rotation,
+    max_degree=1200,
+)
+
+solution = propagate_with_acceleration(
+    initial_state,
+    duration_s,
+    acceleration,
+    collision_radius_m=1_737_400.0,
+)
+```
+
+The frame name is intentionally not hard-coded. It must correspond to the SPICE kernel set loaded by the user.
+
+## Mascons
+
+The implementation does not approximate mascons as separate point masses. Their gravity signatures are represented by the high-degree GRAIL spherical-harmonic coefficients. This is why `mascons` and `spherical-harmonics` are accurate repository topics once an actual GRAIL coefficient set is used.
 
 ## Repository layout
 
@@ -94,37 +140,32 @@ lunar-astrodynamics-simulation/
 ├── docs/
 │   ├── model.md
 │   └── reproducibility.md
-├── examples/j2_precession.py
-├── lunar_orbit_simulation.ipynb
-├── results/j2_validation.json
+├── examples/
+│   ├── grgm1200a_gravity.py
+│   ├── harmonic_validation.py
+│   └── j2_precession.py
+├── scripts/download_grgm1200a.py
 ├── src/lunar_astrodynamics/
 │   ├── analysis.py
 │   ├── constants.py
 │   ├── dynamics.py
 │   ├── elements.py
+│   ├── frames.py
+│   ├── harmonics.py
 │   └── propagation.py
 ├── tests/
 ├── CITATION.cff
 ├── LICENSE
 ├── Makefile
 ├── pyproject.toml
-├── requirements.txt
 └── README.md
 ```
 
 ## What this repository does not claim
 
-This is a validated low-degree demonstration, not a mission-grade lunar force model. It does not yet implement GRGM1200A or GL1800F spherical harmonics, lunar libration, third-body gravity, solar radiation pressure, terrain-aware collision detection, or flight-dynamics covariance propagation.
+This remains a research and validation implementation, not certified flight-dynamics software. The repository does not bundle NASA's coefficient file, lunar topography, automatic SPICE kernels, third-body gravity, solar radiation pressure, covariance propagation, or orbit-determination estimation.
 
-Calling the current model a mascon simulation would be inaccurate. Higher-order GRAIL gravity is future work and requires body-fixed frame handling before the coefficients can be used correctly.
-
-## Extending
-
-The next scientifically meaningful extension is a body-fixed spherical-harmonic evaluator using an archived GRAIL model, with explicit normalization handling, epoch-dependent lunar orientation, and cross-validation against established astrodynamics software.
-
-## Reproducibility
-
-See [docs/reproducibility.md](docs/reproducibility.md).
+See [docs/model.md](docs/model.md) for the force model and [docs/reproducibility.md](docs/reproducibility.md) for exact checks.
 
 ## Cite this repository
 

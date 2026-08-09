@@ -1,4 +1,4 @@
-"""Physical constants used by the demonstration models."""
+"""Physical constants and product metadata for lunar gravity models."""
 
 from __future__ import annotations
 
@@ -7,12 +7,7 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class LunarJ2Model:
-    """Parameters for an axisymmetric lunar J2 gravity model.
-
-    ``reference_radius_m`` belongs to the gravity model and is distinct from
-    ``collision_radius_m``, which is a simple mean-radius surface used only for
-    impact termination in this educational propagator.
-    """
+    """Parameters for an axisymmetric lunar J2 gravity model."""
 
     mu_m3_s2: float
     reference_radius_m: float
@@ -21,12 +16,23 @@ class LunarJ2Model:
     name: str
 
 
-# GRGM1200A archive metadata gives GM = 4902.80011526323 km^3/s^2 and a
-# reference radius of 1738.0 km. The J2 value below is the rounded low-degree
-# GRGM1200A value reported in the literature (203.224e-6).
-#
-# The 1737.4 km collision radius is the JPL mean lunar radius. It is not used as
-# the spherical-harmonic reference radius.
+@dataclass(frozen=True)
+class GravityProduct:
+    """Metadata for an archived spherical-harmonic gravity product."""
+
+    name: str
+    product_id: str
+    source_url: str
+    label_url: str
+    expected_size_bytes: int
+    max_degree: int
+    max_order: int
+    reference_radius_m: float
+    mu_m3_s2: float
+    normalization: str
+    body_fixed_frame: str
+
+
 GRGM1200A_J2 = LunarJ2Model(
     mu_m3_s2=4.90280011526323e12,
     reference_radius_m=1_738_000.0,
@@ -35,6 +41,25 @@ GRGM1200A_J2 = LunarJ2Model(
     name="GRGM1200A low-degree J2 approximation",
 )
 
-# Rounded DE440 value published by JPL, kept for comparison and provenance.
 MOON_GM_DE440_M3_S2 = 4.902800e12
 MOON_MEAN_RADIUS_M = 1_737_400.0
+
+GRGM1200A = GravityProduct(
+    name="GRGM1200A",
+    product_id="GGGRX_1200A_SHA.TAB",
+    source_url=(
+        "https://pds-geosciences.wustl.edu/grail/grail-l-lgrs-5-rdr-v1/"
+        "grail_1001/shadr/gggrx_1200a_sha.tab"
+    ),
+    label_url=(
+        "https://pds-geosciences.wustl.edu/grail/grail-l-lgrs-5-rdr-v1/"
+        "grail_1001/shadr/gggrx_1200a_sha.lbl"
+    ),
+    expected_size_bytes=88_059_844,
+    max_degree=1200,
+    max_order=1200,
+    reference_radius_m=1_738_000.0,
+    mu_m3_s2=4.90280011526323e12,
+    normalization="4pi",
+    body_fixed_frame="DE430 lunar principal-axes frame",
+)

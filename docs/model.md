@@ -1,53 +1,90 @@
-# Model definition
+# Gravity model
 
-This repository implements a deliberately limited lunar gravity model for quantitative demonstration and regression testing.
+The repository contains two lunar gravity implementations:
 
-## Implemented dynamics
+1. a low-degree central-plus-J2 model used for analytical secular-rate validation;
+2. a fully normalized spherical-harmonic evaluator intended for GRAIL SHADR products such as GRGM1200A.
 
-The propagated state is Moon-centered Cartesian position and velocity. The acceleration is
+## GRGM1200A metadata
 
-\[
-\mathbf a = -\frac{\mu}{r^3}\mathbf r + \mathbf a_{J_2}.
-\]
+The NASA PDS GRGM1200A product label identifies the field as a degree-and-order 1200 model derived from the full GRAIL data set. The archived coefficients are fully normalized using the geodesy 4π convention. The label specifies:
 
-The J2 contribution is the standard axisymmetric degree-2 zonal term
+- reference radius: 1738.0 km
+- GM: 4902.80011526323 km³/s²
+- maximum degree/order: 1200/1200
+- coordinate system: lunar body-fixed principal-axes frame defined using DE430
+- product ID: `GGGRX_1200A_SHA.TAB`
 
-\[
-a_x = \frac{3 J_2 \mu R^2 x}{2r^5}\left(5\frac{z^2}{r^2}-1\right),
-\]
+Official product directory:
 
-\[
-a_y = \frac{3 J_2 \mu R^2 y}{2r^5}\left(5\frac{z^2}{r^2}-1\right),
-\]
+`https://pds-geosciences.wustl.edu/grail/grail-l-lgrs-5-rdr-v1/grail_1001/shadr/`
 
-\[
-a_z = \frac{3 J_2 \mu R^2 z}{2r^5}\left(5\frac{z^2}{r^2}-3\right).
-\]
+Product label:
 
-The demonstration uses the GRGM1200A gravity-model reference radius of 1738.0 km and its archived GM of 4902.80011526323 km^3/s^2. J2 is represented by the rounded GRGM1200A low-degree value 203.224e-6. The simple impact boundary uses the JPL mean lunar radius of 1737.4 km.
+`https://pds-geosciences.wustl.edu/grail/grail-l-lgrs-5-rdr-v1/grail_1001/shadr/gggrx_1200a_sha.lbl`
 
-## Frame scope
+The coefficient file is intentionally not committed to this repository. It is approximately 88 MB and can be downloaded with `scripts/download_grgm1200a.py`.
 
-For the J2-only model, the z-axis is treated as the symmetry axis. Rotation about that axis does not alter an axisymmetric zonal term.
+## Potential
 
-This is not sufficient for a full GRAIL gravity field. GRGM1200A coefficients are fully normalized and defined in the lunar body-fixed principal-axes frame. Tesseral and sectoral terms therefore require an epoch-aware inertial-to-body-fixed attitude transformation, gravity evaluation in the body-fixed frame, and rotation of the resulting acceleration back to the inertial frame.
+For body-fixed spherical coordinates radius `r`, latitude `φ`, and east-positive longitude `λ`, the implemented positive gravitational potential is
 
-## Sources
+```text
+U = GM/r Σ[n=0..N] (R/r)^n Σ[m=0..min(n,M)]
+    P̄_nm(sin φ) [C̄_nm cos(mλ) + S̄_nm sin(mλ)]
+```
 
-- NASA PDS GRAIL GRGM1200A label: https://pds-geosciences.wustl.edu/grail/grail-l-lgrs-5-rdr-v1/grail_1001/shadr/gggrx_1200a_sha.lbl
-- NASA JPL planetary satellite physical parameters: https://ssd.jpl.nasa.gov/sats/phys_par/
-- NASA GSFC GRGM1200A archive page: https://pgda.gsfc.nasa.gov/products/50
-- Lemoine et al. (2014), GRGM900C: https://doi.org/10.1002/2014GL060027
+`P̄_nm` uses geodesy 4π normalization and excludes the Condon-Shortley phase. `C̄_00 = 1` is inserted by the parser because the GRAIL SHADR coefficient table begins at degree 1.
 
-## Deliberate exclusions
+The Cartesian acceleration is obtained from the analytical radial, latitude, and longitude derivatives of this potential. The normalized associated Legendre functions and their latitude derivatives are computed by a forward recursion that operates directly on normalized values. This avoids the factorial overflow that would occur if degree-1200 unnormalized functions were formed first.
 
-The current package does not implement:
+## J2 relationship
 
-- higher-degree/order GRAIL spherical harmonics or explicit mascon point-mass models
-- lunar libration or a time-dependent body-fixed frame
-- Earth or Sun third-body gravity
+For the same 4π convention, a pure J2 field is represented by
+
+```text
+C̄_20 = -J2 / sqrt(5)
+```
+
+The test suite verifies that the spherical-harmonic evaluator using this `C̄_20` reproduces the independent closed-form J2 acceleration to floating-point precision.
+
+## Tesseral and sectoral terms
+
+Terms with `m > 0` depend on longitude and therefore must be evaluated in the gravity model's body-fixed frame. The repository provides:
+
+- `gravity_acceleration_body_fixed(...)`
+- `gravity_acceleration_inertial(...)`
+- `spice_rotation_provider(...)`
+
+The inertial wrapper performs this sequence:
+
+```text
+r_inertial -> body-fixed rotation -> harmonic gravity -> inverse rotation -> a_inertial
+```
+
+The rotation provider is explicit. The library does not silently assume a lunar spin rate or invent a principal-axes orientation model.
+
+For flight propagation, load an appropriate SPICE kernel set, construct a rotation provider for the chosen inertial and lunar body-fixed frames, and pass the resulting acceleration to `propagate_with_acceleration(...)`.
+
+## Mascons
+
+There is no separate collection of point-mass mascon objects. GRAIL high-degree spherical harmonics encode the spatial gravity anomalies associated with lunar mass concentrations. Consequently, using the actual GRGM1200A `C̄_nm` and `S̄_nm` coefficients includes mascon signatures through the gravity field itself.
+
+## Surface handling
+
+The gravity model's 1738.0 km reference radius is not treated as a physical surface. Orbit termination continues to use a separate 1737.4 km mean-radius collision boundary. This is a deliberately simple collision model, not terrain-aware lunar topography.
+
+## Exclusions
+
+The repository does not currently include:
+
+- a bundled GRGM1200A coefficient file
+- automatic SPICE kernel acquisition
+- lunar topography collision geometry
+- Earth/Sun third-body gravity
 - solar radiation pressure
-- relativistic corrections
-- lunar topography for terrain-aware impact detection
+- tidal time-variable gravity
+- covariance propagation
+- force-model estimation
 
-Those effects matter for mission-grade long-duration low lunar orbit propagation. The package is intended to make the low-degree J2 demonstration correct, testable, and explicit about its limits.
+Those omissions are documented so the repository is not mistaken for mission-grade flight dynamics software.
