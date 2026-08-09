@@ -27,12 +27,17 @@ class SphericalHarmonicModel:
     normalization: str = "4pi"
 
     def __post_init__(self) -> None:
-        c = np.asarray(self.c, dtype=float)
-        s = np.asarray(self.s, dtype=float)
+        c = np.array(self.c, dtype=float, copy=True)
+        s = np.array(self.s, dtype=float, copy=True)
         if c.ndim != 2 or c.shape[0] != c.shape[1] or s.shape != c.shape:
             raise ValueError("c and s must be matching square coefficient arrays")
-        if self.mu_m3_s2 <= 0.0 or self.reference_radius_m <= 0.0:
-            raise ValueError("mu and reference radius must be positive")
+        if (
+            not np.isfinite(self.mu_m3_s2)
+            or not np.isfinite(self.reference_radius_m)
+            or self.mu_m3_s2 <= 0.0
+            or self.reference_radius_m <= 0.0
+        ):
+            raise ValueError("mu and reference radius must be finite and positive")
         if self.normalization.lower() != "4pi":
             raise ValueError("this evaluator requires geodesy 4pi-normalized coefficients")
         if not np.all(np.isfinite(c)) or not np.all(np.isfinite(s)):
@@ -44,6 +49,8 @@ class SphericalHarmonicModel:
         upper = np.triu_indices(c.shape[0], k=1)
         if np.any(c[upper] != 0.0) or np.any(s[upper] != 0.0):
             raise ValueError("coefficients with order m > degree n must be zero")
+        c.setflags(write=False)
+        s.setflags(write=False)
         object.__setattr__(self, "c", c)
         object.__setattr__(self, "s", s)
 
@@ -66,9 +73,8 @@ class SphericalHarmonicModel:
         c = self.c[: degree + 1, : degree + 1].copy()
         s = self.s[: degree + 1, : degree + 1].copy()
         if order < degree:
-            for n in range(degree + 1):
-                c[n, order + 1 :] = 0.0
-                s[n, order + 1 :] = 0.0
+            c[:, order + 1 :] = 0.0
+            s[:, order + 1 :] = 0.0
         return SphericalHarmonicModel(
             self.mu_m3_s2,
             self.reference_radius_m,
@@ -80,25 +86,90 @@ class SphericalHarmonicModel:
 
 
 def _parse_float(token: str) -> float:
-    return float(token.replace("D", "E").replace("d", "e"))
+    return float(token.strip().replace("D", "E").replace("d", "e"))
 
 
-def _header_from_text(text: str) -> tuple[float, float, int, int, int] | None:
-    fields = text.split()
-    if len(fields) < 6:
-        return None
+def _without_record_ending(raw_line: str) -> str:
+    if raw_line.endswith("\r\n"):
+        return raw_line[:-2]
+    if raw_line.endswith("\n") or raw_line.endswith("\r"):
+        return raw_line[:-1]
+    return raw_line
+
+
+def _field(record: str, start: int, width: int, label: str, record_number: int) -> str:
+    value = record[start : start + width].strip()
+    if not value:
+        raise ValueError(f"empty {label} in SHADR record {record_number}")
+    return value
+
+
+def _header_from_record(record: str) -> tuple[float, float, int, int, int, float, float]:
+    """Parse the 137-byte SHADR header data region using PDS column offsets."""
+    if len(record) < 137:
+        raise ValueError(
+            f"SHADR header is too short: {len(record)} characters; expected at least 137"
+        )
     try:
-        radius_km = _parse_float(fields[0])
-        mu_km3_s2 = _parse_float(fields[1])
-        _parse_float(fields[2])
-        degree = int(fields[3])
-        order = int(fields[4])
-        normalization = int(fields[5])
-    except ValueError:
-        return None
-    if radius_km <= 0.0 or mu_km3_s2 <= 0.0 or degree < 0 or order < 0:
-        return None
-    return radius_km, mu_km3_s2, degree, order, normalization
+        radius_km = _parse_float(_field(record, 0, 23, "reference radius", 1))
+        mu_km3_s2 = _parse_float(_field(record, 24, 23, "constant", 1))
+        _parse_float(_field(record, 48, 23, "uncertainty in constant", 1))
+        degree = int(_field(record, 72, 5, "degree", 1))
+        order = int(_field(record, 78, 5, "order", 1))
+        normalization = int(_field(record, 84, 5, "normalization state", 1))
+        reference_longitude_deg = _parse_float(
+            _field(record, 90, 23, "reference longitude", 1)
+        )
+        reference_latitude_deg = _parse_float(
+            _field(record, 114, 23, "reference latitude", 1)
+        )
+    except ValueError as exc:
+        raise ValueError(f"invalid SHADR header: {exc}") from exc
+
+    if (
+        not np.isfinite(radius_km)
+        or not np.isfinite(mu_km3_s2)
+        or radius_km <= 0.0
+        or mu_km3_s2 <= 0.0
+        or degree < 0
+        or order < 0
+        or order > degree
+    ):
+        raise ValueError("invalid SHADR header values")
+    return (
+        radius_km,
+        mu_km3_s2,
+        degree,
+        order,
+        normalization,
+        reference_longitude_deg,
+        reference_latitude_deg,
+    )
+
+
+def _coefficient_from_record(
+    record: str, record_number: int
+) -> tuple[int, int, float, float]:
+    """Parse the 107-byte SHADR coefficient data region using PDS offsets."""
+    if len(record) < 107:
+        raise ValueError(
+            f"SHADR coefficient record {record_number} is too short: "
+            f"{len(record)} characters; expected at least 107"
+        )
+    try:
+        n = int(_field(record, 0, 5, "coefficient degree", record_number))
+        m = int(_field(record, 6, 5, "coefficient order", record_number))
+        c_nm = _parse_float(_field(record, 12, 23, "C coefficient", record_number))
+        s_nm = _parse_float(_field(record, 36, 23, "S coefficient", record_number))
+        sigma_c = _parse_float(_field(record, 60, 23, "C uncertainty", record_number))
+        sigma_s = _parse_float(_field(record, 84, 23, "S uncertainty", record_number))
+    except ValueError as exc:
+        raise ValueError(f"invalid SHADR coefficient record {record_number}: {exc}") from exc
+
+    values = np.array([c_nm, s_nm, sigma_c, sigma_s], dtype=float)
+    if n < 0 or m < 0 or m > n or not np.all(np.isfinite(values)):
+        raise ValueError(f"invalid SHADR coefficient record {record_number}")
+    return n, m, c_nm, s_nm
 
 
 def read_shadr(
@@ -110,26 +181,51 @@ def read_shadr(
 ) -> SphericalHarmonicModel:
     """Read a PDS SHADR ASCII gravity model with normalized coefficients.
 
-    GRAIL SHADR files place one logical header row across the first two
-    fixed-length records and begin the coefficient table at record 3. The
-    coefficient table omits C00, so this reader inserts C00=1 explicitly.
+    PDS SHADR files use fixed 122-byte physical records. The header is one
+    logical 244-byte line containing 137 bytes of delimited data, 105 padding
+    bytes, and CRLF. Coefficient lines contain 107 bytes of comma-delimited
+    data, 13 padding bytes, and CRLF. The format does not require coefficient
+    rows to be ordered or complete, so this reader scans every row and indexes
+    coefficients by their explicit degree and order.
+
+    The evaluator assumes geodesy 4pi normalization. A SHADR normalization
+    state of 1 is therefore necessary but callers must also verify that the
+    specific product documentation defines that normalized convention.
     """
     close = False
     if hasattr(path_or_file, "read"):
         handle = path_or_file  # type: ignore[assignment]
     else:
-        handle = open(path_or_file, "r", encoding="ascii", errors="strict")
+        handle = open(
+            path_or_file,
+            "r",
+            encoding="ascii",
+            errors="strict",
+            newline="",
+        )
         close = True
 
     try:
-        first = handle.readline()
-        second = handle.readline()
-        header = _header_from_text(first + " " + second)
-        if header is None:
-            raise ValueError("could not parse SHADR header from the first two records")
-        radius_km, mu_km3_s2, file_degree, file_order, normalization = header
+        raw_header = handle.readline()
+        if raw_header == "":
+            raise ValueError("empty SHADR file")
+        header_record = _without_record_ending(raw_header)
+        (
+            radius_km,
+            mu_km3_s2,
+            file_degree,
+            file_order,
+            normalization,
+            reference_longitude_deg,
+            reference_latitude_deg,
+        ) = _header_from_record(header_record)
+
         if normalization != 1:
             raise ValueError("SHADR coefficients must be normalized (normalization state 1)")
+        if abs(reference_longitude_deg) > 1e-12 or abs(reference_latitude_deg) > 1e-12:
+            raise ValueError(
+                "non-zero SHADR reference longitude/latitude is not supported by this evaluator"
+            )
 
         degree = file_degree if max_degree is None else min(int(max_degree), file_degree)
         if degree < 0:
@@ -137,25 +233,30 @@ def read_shadr(
         c = np.zeros((degree + 1, degree + 1), dtype=float)
         s = np.zeros_like(c)
         c[0, 0] = 1.0
+        seen: set[tuple[int, int]] = set()
+        coefficient_rows = 0
 
-        for raw_line in handle:
-            fields = raw_line.split()
-            if len(fields) < 6:
+        for record_number, raw_line in enumerate(handle, start=3):
+            record = _without_record_ending(raw_line)
+            if not record.strip():
                 continue
-            try:
-                n = int(fields[0])
-                m = int(fields[1])
-                c_nm = _parse_float(fields[2])
-                s_nm = _parse_float(fields[3])
-                _parse_float(fields[4])
-                _parse_float(fields[5])
-            except ValueError:
-                continue
-            if n < 0 or m < 0 or m > n:
-                raise ValueError(f"invalid SHADR degree/order pair ({n}, {m})")
+            n, m, c_nm, s_nm = _coefficient_from_record(record, record_number)
+            coefficient_rows += 1
+            if n > file_degree or m > file_order:
+                raise ValueError(
+                    f"SHADR coefficient ({n}, {m}) exceeds header degree/order "
+                    f"({file_degree}, {file_order})"
+                )
             if n <= degree:
+                key = (n, m)
+                if key in seen:
+                    raise ValueError(f"duplicate SHADR coefficient ({n}, {m})")
+                seen.add(key)
                 c[n, m] = c_nm
                 s[n, m] = s_nm
+
+        if coefficient_rows == 0 and file_degree > 0:
+            raise ValueError("SHADR file contains no coefficient records")
 
         return SphericalHarmonicModel(
             mu_m3_s2=mu_km3_s2 * 1e9,
