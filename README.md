@@ -1,79 +1,148 @@
 # Lunar Astrodynamics Simulation
-[![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ![Lunar Astrodynamics Simulation](assets/social/github-social-card-lunar-astrodynamics.png)
 
-Python simulation of lunar orbital mechanics. Models spacecraft dynamics under the Moon's non-uniform gravity field (J2, mascons) using numerical integration (SciPy). Astrodynamics example.
+[![CI](https://github.com/sylvesterkaczmarek/lunar-astrodynamics-simulation/actions/workflows/ci.yml/badge.svg)](https://github.com/sylvesterkaczmarek/lunar-astrodynamics-simulation/actions/workflows/ci.yml)
+![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-yellow.svg)
 
-## Overview
+Validated Python demonstration of low lunar orbit propagation with central gravity and the Moon's J2 perturbation. The repository uses a non-singular inclined, mildly eccentric orbit so that nodal and apsidal precession are observable and can be checked against first-order analytical J2 theory.
 
-This repository contains code to simulate the orbit of a satellite around the Moon, demonstrating the effect of gravitational perturbations beyond the simple two-body problem. It serves as an exploration into computational astrodynamics, focusing on the unique challenges presented by the Moon's complex gravity field.
+## At a glance
 
-The simulation starts with the basic 2-body problem (Keplerian orbit) and then introduces the J2 perturbation (due to the Moon's oblateness) as a first-order correction. Explanations and code structure are provided to facilitate understanding and potential expansion to include higher-order terms like mascons.
-
-**Coordinate System.** Moon-Centered Inertial (MCI) frame. Origin at the Moon's center. Axes fixed relative to distant stars.
-
-## Background & Physics
-
-The motion of a satellite is governed by the gravitational forces acting upon it.
-
-### 1. Two-Body Problem (Central Body Gravity)
-
-In the simplest model, only the Moon's gravity, treated as a point mass, is considered. The acceleration is inversely proportional to the square of the distance and directed towards the Moon's center. This results in a predictable Keplerian orbit (ellipse, parabola, hyperbola). The governing equations are detailed in the accompanying Jupyter Notebook.
-
-### 2. J2 Perturbation (Oblateness)
-
-The Moon is not perfectly spherical; it bulges slightly at the equator. The J2 coefficient quantifies the dominant part of this oblateness. This asymmetry adds a perturbing acceleration component, which primarily causes:
-*   **Nodal Precession.** Rotation of the orbital plane around the Moon's polar axis.
-*   **Apsidal Precession.** Rotation of the orbit's orientation within its plane.
-The specific equations for the J2 acceleration depend on the J2 coefficient, the Moon's gravitational parameter and radius, and the satellite's position, as shown in the notebook.
-
-### 3. Mascons & Higher-Order Terms (Not Implemented Here)
-
-The Moon's gravity field is highly irregular due to **mascons** (mass concentrations) beneath the surface, remnants of large impacts. Accurately modeling these requires representing the gravitational potential using spherical harmonics. The perturbing acceleration is derived from the gradient of this potential. Implementing this involves complex calculations with Legendre polynomials and handling many coefficients from gravity models (e.g., GRGM1200A, GLGM-3), further detailed in the notebook's explanations.
-
-## Features
-
-*   Simulates satellite orbits around the Moon using numerical integration (`scipy.integrate.solve_ivp`).
-*   Models the central body (Keplerian) gravitational force.
-*   Includes the J2 gravitational perturbation effect.
-*   Visualizes the comparison between Keplerian and J2-perturbed orbits in 3D.
-*   Provides a framework and explanation for incorporating more complex gravity models (mascons).
-
-## Installation
-
-Ensure you have Python 3 installed. The required libraries can be installed using pip:
-
-```bash
-pip install numpy scipy matplotlib
+```mermaid
+flowchart LR
+    A[Orbital elements] --> B[Cartesian initial state]
+    B --> C[DOP853 propagation]
+    C --> D[Central gravity plus J2]
+    D --> E[Osculating elements]
+    E --> F[Analytical rate comparison]
+    F --> G[JSON metrics and figure]
 ```
 
-The script will execute the simulation and should generate a plot similar to the one shown below.
+The central validation question is simple: does the integrated J2 model reproduce the expected secular rates of right ascension of the ascending node and argument of periapsis while preserving the invariants that an axisymmetric field should preserve?
 
-## Example Output / Visualization
-The simulation output includes a 3D plot comparing the ideal Keplerian orbit with the J2-perturbed orbit over several revolutions.
+![J2 precession validation](assets/results/j2_precession.svg)
 
-![Example Orbit Plot](lunar_orbit_j2_comparison.png)
+## What changed from the original notebook
 
-Observe the slight deviations caused by the J2 effect, primarily manifesting as precession of the orbital plane.
+- Corrected the lunar GM and separated gravity-model reference radius from physical mean radius.
+- Replaced the exactly equatorial circular example with an inclined, eccentric orbit where RAAN and periapsis are defined.
+- Added Cartesian and classical-element conversions.
+- Added analytical first-order J2 secular-rate calculations.
+- Switched the reference propagator to SciPy `DOP853` with separate position and velocity absolute tolerances.
+- Added terminal mean-radius surface-impact detection.
+- Added quantitative regression tests rather than treating solver completion as physics validation.
+- Documented why full GRAIL harmonics require a lunar body-fixed principal-axes frame.
+- Added packaging, CI, reproducibility documentation, machine-readable results, and citation metadata.
 
-## Limitations
+## Quick start
 
-*   **Gravity Model.** Only includes the J2 perturbation. Higher-order terms (mascons) are not implemented.
-*   **Other Perturbations.** Does not account for third-body gravity (Earth, Sun), solar radiation pressure, atmospheric drag (negligible for Moon), or relativistic effects.
-*   **Coordinate System.** Uses a simplified MCI frame; does not account for frame precession/nutation.
+```bash
+git clone https://github.com/sylvesterkaczmarek/lunar-astrodynamics-simulation.git
+cd lunar-astrodynamics-simulation
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -e .[dev]
+python -m pytest
+python examples/j2_precession.py --orbits 40
+```
 
-## Future Work
+Windows PowerShell users can activate the environment with `.vent\Scripts\Activate.ps1`.
 
-*   Implement higher-order spherical harmonic terms (Cnm, Snm) from a standard lunar gravity model (e.g., GRGM1200A) to accurately simulate mascon effects.
-*   Add third-body gravitational perturbations from the Earth and Sun.
-*   Incorporate solar radiation pressure models.
-*   Visualize the time evolution of classical orbital elements (a, e, i, Ω, ω, M) to better quantify perturbation effects.
-*   Compare simulation results against known data or established software (e.g., GMAT, Orekit).
+## Model
+
+The implemented acceleration is central lunar gravity plus the axisymmetric J2 perturbation. The low-degree demonstration uses the GRGM1200A reference radius and GM, with a rounded GRGM1200A J2 value. The impact boundary uses the JPL mean lunar radius.
+
+See [docs/model.md](docs/model.md) for equations, parameter provenance, frame assumptions, and exclusions.
+
+## Validation
+
+The automated tests cover:
+
+- two-body specific-energy conservation
+- two-body angular-momentum conservation
+- axial angular-momentum conservation under J2
+- numerical versus analytical J2 nodal precession
+- numerical versus analytical J2 apsidal precession
+- singular orbital-element handling
+- terminal surface-impact detection
+- invalid below-surface initial states
+- default integration convergence against a tighter numerical reference
+
+The full example stores the measured rates and relative errors in [`results/j2_validation.json`](results/j2_validation.json).
+
+## Results snapshot
+
+The checked-in 40-orbit regression run gives:
+
+| Quantity | Analytical | Numerical | Relative difference |
+|---|---:|---:|---:|
+| RAAN rate | -0.773273 deg/day | -0.773527 deg/day | 0.033% |
+| Periapsis-argument rate | 0.820180 deg/day | 0.817987 deg/day | 0.267% |
+
+The same run preserves axial angular momentum with a relative span of about `4.0e-12`. After five orbits, the default integrator differs from a tighter numerical reference by about `4.5e-05 m` in position. The validation orbit does not intersect the mean-radius lunar surface. These are low-degree J2 validation results, not mission-grade orbit-prediction accuracy claims.
+
+## Repository layout
+
+```text
+lunar-astrodynamics-simulation/
+├── .github/workflows/ci.yml
+├── assets/
+│   ├── results/j2_precession.svg
+│   └── social/github-social-card-lunar-astrodynamics.png
+├── docs/
+│   ├── model.md
+│   └── reproducibility.md
+├── examples/j2_precession.py
+├── lunar_orbit_simulation.ipynb
+├── results/j2_validation.json
+├── src/lunar_astrodynamics/
+│   ├── analysis.py
+│   ├── constants.py
+│   ├── dynamics.py
+│   ├── elements.py
+│   └── propagation.py
+├── tests/
+├── CITATION.cff
+├── LICENSE
+├── Makefile
+├── pyproject.toml
+├── requirements.txt
+└── README.md
+```
+
+## What this repository does not claim
+
+This is a validated low-degree demonstration, not a mission-grade lunar force model. It does not yet implement GRGM1200A or GL1800F spherical harmonics, lunar libration, third-body gravity, solar radiation pressure, terrain-aware collision detection, or flight-dynamics covariance propagation.
+
+Calling the current model a mascon simulation would be inaccurate. Higher-order GRAIL gravity is future work and requires body-fixed frame handling before the coefficients can be used correctly.
+
+## Extending
+
+The next scientifically meaningful extension is a body-fixed spherical-harmonic evaluator using an archived GRAIL model, with explicit normalization handling, epoch-dependent lunar orientation, and cross-validation against established astrodynamics software.
+
+## Reproducibility
+
+See [docs/reproducibility.md](docs/reproducibility.md).
+
+## Cite this repository
+
+If you use or adapt this repository, please cite:
+
+> Kaczmarek, S. (2026). *Lunar Astrodynamics Simulation*. GitHub. https://github.com/sylvesterkaczmarek/lunar-astrodynamics-simulation
+
+```bibtex
+@software{Kaczmarek_2026_Lunar_Astrodynamics_Simulation,
+  author = {Sylvester Kaczmarek},
+  title  = {Lunar Astrodynamics Simulation},
+  year   = {2026},
+  url    = {https://github.com/sylvesterkaczmarek/lunar-astrodynamics-simulation}
+}
+```
 
 ## License
 
 MIT. See [LICENSE](LICENSE).
 
-© **Sylvester Kaczmarek** · https://www.sylvesterkaczmarek.com
+© **Sylvester Kaczmarek** · [https://www.sylvesterkaczmarek.com](https://www.sylvesterkaczmarek.com)

@@ -1,0 +1,17 @@
+{
+  "analytical_argp_deg_day": 0.8201800629369448,
+  "analytical_raan_deg_day": -0.7732731790622971,
+  "argp_relative_error": 0.002674003908213383,
+  "duration_days": 3.4064337693998885,
+  "five_orbit_tight_reference_position_difference_m": 4.535573851956116e-05,
+  "initial_eccentricity": 0.02,
+  "initial_inclination_deg": 45.0,
+  "initial_semi_major_axis_km": 1887.4,
+  "model": "GRGM1200A low-degree J2 approximation",
+  "numerical_argp_deg_day": 0.8179868982432127,
+  "numerical_raan_deg_day": -0.7735266498506951,
+  "orbits": 40,
+  "raan_relative_error": 0.0003277894478447621,
+  "relative_hz_span": 4.034316401965808e-12,
+  "surface_impact": false
+}
