@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lunar-astrodynamics-simulation"
-version = "0.3.0"
+version = "0.3.1"
 description = "Validated lunar orbit simulation with J2 and GRAIL spherical-harmonic gravity models."
 readme = "README.md"
 requires-python = ">=3.10"

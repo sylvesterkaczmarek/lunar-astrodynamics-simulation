@@ -34,7 +34,7 @@ U = GM/r Σ[n=0..N] (R/r)^n Σ[m=0..min(n,M)]
     P̄_nm(sin φ) [C̄_nm cos(mλ) + S̄_nm sin(mλ)]
 ```
 
-`P̄_nm` uses geodesy 4π normalization and excludes the Condon-Shortley phase. `C̄_00 = 1` is inserted by the parser because the GRAIL SHADR coefficient table begins at degree 1.
+`P̄_nm` uses geodesy 4π normalization and excludes the Condon-Shortley phase. `C̄_00 = 1` is inserted by the parser because the GRAIL SHADR coefficient table begins at degree 1. The SHADR reader follows the PDS fixed-column offsets directly: a 137-byte header data row within a 244-byte header block and 107-byte coefficient data rows within 122-byte coefficient blocks. Coefficient rows are indexed by their explicit degree and order because the SHADR specification does not require ordering or completeness.
 
 The Cartesian acceleration is obtained from the analytical radial, latitude, and longitude derivatives of this potential. The normalized associated Legendre functions and their latitude derivatives are computed by a forward recursion that operates directly on normalized values. This avoids the factorial overflow that would occur if degree-1200 unnormalized functions were formed first.
 

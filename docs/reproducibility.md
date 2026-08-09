@@ -30,7 +30,7 @@ Download the official NASA PDS file with:
 python scripts/download_grgm1200a.py
 ```
 
-The script downloads both the SHADR coefficient table and PDS3 label, verifies the archived file size, then parses the header and low-degree coefficients to check GM and reference radius.
+The script downloads both the SHADR coefficient table and PDS3 label, verifies the archived file size, then scans the complete SHADR coefficient table while retaining the requested low-degree coefficients to check GM and reference radius. The parser uses the published fixed-column offsets for the 244-byte header block and 122-byte coefficient blocks.
 
 The downloaded `.tab` and `.lbl` products are ignored by Git because they are external scientific data, not repository source.
 
@@ -55,7 +55,10 @@ CI does not download the 88 MB NASA data product. It verifies the implementation
 - analytical harmonic acceleration versus finite-difference potential gradients
 - longitude dependence of tesseral terms
 - body-fixed/inertial rotation consistency
-- SHADR format parsing
+- byte-faithful PDS SHADR fixed-record parsing
+- malformed and duplicate coefficient rejection
+- immutable coefficient-array handling
+- non-finite orbital-state and integrator-input rejection
 - degree-1200 normalized Legendre stability
 - degree-1200 acceleration finiteness
 - surface-event and integration-convergence regressions

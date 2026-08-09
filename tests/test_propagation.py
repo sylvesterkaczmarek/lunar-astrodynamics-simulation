@@ -126,3 +126,17 @@ def test_generic_acceleration_propagator_matches_two_body_wrapper() -> None:
     )
     assert generic.success
     assert generic.y == pytest.approx(reference.y, rel=1e-12, abs=1e-6)
+
+
+def test_nonfinite_sample_time_is_rejected() -> None:
+    elements = _validation_orbit()
+    state0 = state_from_elements(elements, GRGM1200A_J2.mu_m3_s2)
+    with pytest.raises(ValueError, match="finite"):
+        propagate(state0, 100.0, sample_times_s=[0.0, np.nan])
+
+
+def test_invalid_propagation_settings_are_rejected() -> None:
+    with pytest.raises(ValueError, match="rtol"):
+        PropagationSettings(rtol=np.nan)
+    with pytest.raises(ValueError, match="max_step_s"):
+        PropagationSettings(max_step_s=0.0)
