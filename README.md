@@ -48,7 +48,7 @@ python -m pytest
 python examples/j2_precession.py --orbits 40
 ```
 
-Windows PowerShell users can activate the environment with `.vent\Scripts\Activate.ps1`.
+Windows PowerShell users can activate the environment with `.venv\Scripts\Activate.ps1`.
 
 ## Model
 
