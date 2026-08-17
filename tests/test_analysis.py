@@ -67,17 +67,19 @@ def test_near_circular_polar_history_has_stable_nonsingular_quantities() -> None
     assert history.statistics.modified_equinoctial_h.peak_to_peak < 2e-15
     assert history.statistics.modified_equinoctial_k.peak_to_peak < 2e-15
     assert history.statistics.orbital_plane_direction.maximum_change_rad < 2e-8
-    assert history.statistics.apsidal_direction.maximum_change_rad < 2e-8
+    # Normalising an e=1e-8 eccentricity vector amplifies state roundoff; tens of nanoradians is expected.
+    assert history.statistics.apsidal_direction.maximum_change_rad < 5e-8
     assert history.modified_equinoctial_true_longitude_rad_unwrapped[-1] > history.modified_equinoctial_true_longitude_rad_unwrapped[0]
 
 
 def test_scalar_evolution_statistics_separate_drift_from_bounded_oscillation() -> None:
     time_s = np.linspace(0.0, 100.0, 1001)
-    values = 4.0 + 0.02 * time_s + 0.3 * np.sin(2.0 * np.pi * time_s / 10.0)
+    # The cosine spans ten whole periods and is orthogonal to the centered linear time basis.
+    values = 4.0 + 0.02 * time_s + 0.3 * np.cos(2.0 * np.pi * time_s / 10.0)
     stats = scalar_evolution_statistics(time_s, values)
-    assert stats.linear_rate_per_s == pytest.approx(0.02, abs=2e-5)
-    assert stats.linear_drift_over_span == pytest.approx(2.0, abs=2e-3)
-    assert stats.detrended_peak_to_peak == pytest.approx(0.6, abs=5e-3)
+    assert stats.linear_rate_per_s == pytest.approx(0.02, abs=2e-8)
+    assert stats.linear_drift_over_span == pytest.approx(2.0, abs=2e-6)
+    assert stats.detrended_peak_to_peak == pytest.approx(0.6, abs=5e-4)
     assert 0.20 < stats.detrended_rms < 0.22
 
 
