@@ -6,9 +6,9 @@
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-yellow.svg)
 
-Validated Python lunar-orbit simulation and preliminary mission-analysis tooling from central gravity and J2 through high-degree GRAIL spherical harmonics, gravity-field uncertainty ensembles, LOLA terrain clearance, ephemeris-driven Earth/Sun perturbations, optional solar radiation pressure with lunar eclipse handling, and nonsingular orbital stability analysis.
+Validated Python lunar-orbit simulation and preliminary mission-analysis tooling from central gravity and J2 through high-degree GRAIL spherical harmonics, gravity-field uncertainty ensembles, LOLA terrain clearance, ephemeris-driven Earth/Sun perturbations, optional solar radiation pressure with lunar eclipse handling, nonsingular orbital analysis, and automated low-lunar-orbit stability/frozen-orbit search.
 
-The code keeps gravity, terrain, ephemerides, frames, uncertainty, perturbation forces and orbital-analysis conventions explicit. Large NASA/NAIF datasets remain external and simulation provenance is exposed rather than hidden behind automatic model choices.
+The code keeps gravity, terrain, ephemerides, frames, uncertainty, perturbation forces, orbital-analysis conventions, search definitions and ranking criteria explicit. Large NASA/NAIF datasets remain external and simulation provenance is exposed rather than hidden behind automatic model choices.
 
 ## At a glance
 
@@ -23,6 +23,9 @@ flowchart LR
     L[LOLA terrain] --> C[Terrain clearance and impact]
     P --> C
     C --> A
+    A --> Q[Stability and frozen-orbit search]
+    U --> Q
+    C --> Q
 ```
 
 ## Implemented capabilities
@@ -42,17 +45,24 @@ flowchart LR
 - Moon-centred differential Earth and Sun third-body gravity
 - deterministic SPICE epoch handling with kernel/frame/epoch provenance
 - optional cannonball solar-radiation pressure using configurable mass, area and reflectivity coefficient
-- finite apparent Sun/Moon disk eclipse model with full sunlight, umbra, annular and partial-shadow behavior
+- finite apparent Sun/Moon disk eclipse model with full sunlight, umbra, annular and partial-shadow behaviour
 - physical orbital vectors including eccentricity vector, angular momentum and orbital-plane normal
 - prograde modified equinoctial elements with direct Cartesian conversions
 - nonsingular trajectory histories for osculating apsides, eccentricity-vector, plane and apsidal evolution
 - secular-drift and detrended bounded-oscillation statistics for frozen-orbit studies
-- explicit separation of reference-radius altitude and optional terrain clearance in orbit analysis
+- automated coarse and coarse-to-fine lunar stability/frozen-orbit search
+- transparent per-candidate periselene, aposelene, eccentricity-vector, eccentricity, plane, apsidal, lifetime and clearance metrics
+- configurable hard stability constraints separated from a fully decomposed ranking penalty
+- physical-state deduplication of singular classical search combinations using modified equinoctial elements
+- deterministic parallel candidate evaluation for explicitly parallel-safe force models
+- uncertainty-aware candidate evaluation through supplied gravity realizations
+- terrain-clearance constraints when an explicit LOLA-derived terrain model is supplied
+- structured JSON/CSV search output and auditable 2-D stability-map generation
 - external gravity, terrain and SPICE download/validation tooling
 
 ## Validation
 
-The automated suite contains **124 tests** and passes on Python 3.10, 3.12 and 3.13.
+The automated suite contains **134 tests** and passes on Python 3.10, 3.12 and 3.13.
 
 Gravity validation includes normalized `C20` versus an independent J2 implementation, Cartesian finite-difference gradients, zonal/tesseral/sectoral fields, equatorial and polar cases, pole-crossing continuity, degree/order truncation, degree-1200 finiteness, and body-fixed/inertial consistency.
 
@@ -63,6 +73,8 @@ Terrain validation covers analytic interpolation fixtures, longitude wrapping, a
 Force validation covers exact differential third-body geometries, the distant-body inverse-cube limit, SPICE epoch and kernel provenance, one-AU SRP magnitude, inverse-square SRP scaling, full sunlight, total lunar umbra, annular eclipse, partial eclipse and continuous shadow transitions.
 
 Orbital-mathematics validation covers classical-element preservation, physical orbital vectors, direct Cartesian/MEE round trips across circular, near-circular, near-equatorial, polar, inclined and highly eccentric cases through 179 degrees inclination, explicit singular-angle rejection, exact circular-equatorial analysis, osculating apsides, terrain/reference-altitude separation and drift/oscillation statistics.
+
+Stability-search validation covers two-body invariants, frozen metrics independent of survival, impact/lifetime handling, physical deduplication of circular/equatorial classical parameter combinations, deterministic threaded execution, uncertainty summaries, terrain constraints, coarse-to-fine refinement, stability-map reduction, harmonic-degree provenance, structured JSON/CSV export and surface-safe default ranges.
 
 Retained gravity checks are:
 
@@ -75,6 +87,7 @@ Scientific documentation:
 
 - [`docs/model.md`](docs/model.md)
 - [`docs/orbital_analysis.md`](docs/orbital_analysis.md)
+- [`docs/frozen_orbit_search.md`](docs/frozen_orbit_search.md)
 - [`docs/uncertainty.md`](docs/uncertainty.md)
 - [`docs/terrain.md`](docs/terrain.md)
 - [`docs/forces.md`](docs/forces.md)
@@ -94,9 +107,75 @@ python examples/harmonic_validation.py
 python examples/gravity_uncertainty.py --samples 16 --seed 20260817 --duration-days 1
 python examples/terrain_clearance.py
 python examples/nonsingular_analysis.py --orbits 10
+python examples/frozen_orbit_search.py --quick
 ```
 
 Windows PowerShell users can activate the environment with `.venv\Scripts\Activate.ps1`.
+
+## Automated stability and frozen-orbit search
+
+`run_stability_search(...)` and `run_coarse_to_fine_search(...)` search physically interpretable low-lunar-orbit parameter grids instead of requiring manual propagation of one arbitrary initial state.
+
+The search does **not** equate "frozen" with "did not crash". Every candidate keeps the individual quantities used to judge stability:
+
+- osculating periselene and aposelene altitude spread
+- eccentricity-vector secular drift and bounded residual motion
+- eccentricity magnitude variation
+- apsidal direction evolution when the eccentricity is large enough to define it meaningfully
+- orbital-plane direction evolution
+- minimum reference-radius altitude
+- minimum actual terrain clearance when terrain is supplied
+- impact-free lifetime and requested-duration survival fraction
+
+A configurable `StabilityRankingPolicy` provides a convenience ordering, but every normalized term and weighted contribution is stored in `RankingBreakdown`. Hard `StabilityConstraints` remain separate from ranking.
+
+A mission-agnostic starting space is available as:
+
+```python
+space = default_low_lunar_search_space()
+dynamics = j2_search_dynamics(include_j2=True)
+search = run_coarse_to_fine_search(space, dynamics)
+```
+
+The public default spans low semimajor-axis altitudes, modest eccentricities and near-polar inclinations. Its nominal periselenes are kept above the mean-radius sphere, but terrain can still be more restrictive.
+
+For high-degree work, construct the search dynamics explicitly:
+
+```python
+dynamics = harmonic_search_dynamics(
+    gravity_model,
+    body_fixed_from_inertial,
+    max_degree=120,
+    max_order=120,
+    additional_forces=(earth, sun, srp),
+)
+```
+
+The selected gravity product, harmonic degree/order, frame and additional-force provenance are stored with the results. Gravity-uncertainty realizations can be supplied with `harmonic_ensemble_dynamics(...)`, and terrain constraints can use the existing LOLA terrain model with an explicit compatible terrain-frame rotation.
+
+Search results can be written directly:
+
+```python
+search.write_json("results/search.json")
+search.write_csv("results/search.csv")
+map_data = make_stability_map(
+    search,
+    "semi_major_axis_altitude_m",
+    "inclination_deg",
+    metric="periselene_altitude_peak_to_peak_m",
+)
+map_data.write_csv("results/stability_map.csv")
+```
+
+Run the end-to-end example:
+
+```bash
+python examples/frozen_orbit_search.py
+```
+
+The self-contained example uses low-degree J2 as a workflow/screening demonstration. It can also load an external SHADR gravity field with a caller-supplied SPICE lunar body-fixed frame and harmonic degree. It deliberately does not guess that an arbitrary lunar frame is compatible with GRGM1200A.
+
+See [`docs/frozen_orbit_search.md`](docs/frozen_orbit_search.md).
 
 ## Nonsingular orbital analysis
 
@@ -113,8 +192,6 @@ history = orbit_history(solution.t, solution.y, mu)
 `OrbitalVectors` provides the eccentricity vector, specific angular momentum, plane normal, semimajor axis, semilatus rectum, eccentricity, inclination and orbital energy. `ModifiedEquinoctialElements` uses the prograde tangent convention `(p, f, g, h, k, L)`, which is regular for circular, prograde-equatorial and polar orbits and singular at the exact 180-degree retrograde-equatorial limit.
 
 `orbit_history(...)` reports osculating periselene/aposelene radii and altitudes, reference-radius altitude, eccentricity-vector evolution, orbital-plane evolution, apsidal direction where physically meaningful, MEE histories, and drift plus detrended oscillation statistics. If a terrain model and explicit terrain-frame transform are supplied, sampled terrain clearance is returned separately from reference-radius altitude.
-
-The CI example starts with an exact circular/equatorial state: classical conversion correctly reports that RAAN is undefined while MEE returns `f=g=h=k=0`. For a nearly circular `e=1e-7` lunar J2 case, the classical argument of periapsis spans hundreds of degrees over two orbits even though the nonsingular eccentricity vector and MEE components remain the appropriate stability variables.
 
 See [`docs/orbital_analysis.md`](docs/orbital_analysis.md).
 
@@ -198,14 +275,7 @@ python examples/force_model_comparison.py \
   --samples 1001
 ```
 
-The example compares:
-
-1. lunar central + J2 gravity;
-2. lunar gravity + differential Earth third-body gravity;
-3. lunar gravity + Earth + Sun third-body gravity;
-4. lunar gravity + Earth + Sun + SRP with finite-disk lunar eclipse attenuation.
-
-The J2 term is evaluated in SPICE `IAU_MOON` and rotated into J2000. Earth and Sun positions are geometric Moon-centred SPICE positions using `abcorr=NONE`. The output records UTC and ET epoch, inertial/body frames, loaded kernels, spacecraft SRP parameters and force-component provenance.
+The example compares lunar gravity, Earth third-body gravity, Sun third-body gravity and optional SRP with lunar eclipse attenuation. The output records UTC/ET epoch, inertial/body frames, loaded kernels, spacecraft SRP parameters and force-component provenance.
 
 A live two-day validation on 17 August 2026 produced the following final separations from the lunar-gravity-only solution for the documented test orbit:
 
@@ -215,9 +285,7 @@ A live two-day validation on 17 August 2026 produced the following final separat
 | Earth + Sun | `2242.958 m` | `1.923915 m/s` |
 | Earth + Sun + SRP | `2222.287 m` | `1.916217 m/s` |
 
-The SRP case encountered both full lunar umbra and partial penumbra. These values are specific to the documented epoch, orbit and spacecraft parameters and are not universal perturbation magnitudes. The full record is [`results/force_model_spice_validation.json`](results/force_model_spice_validation.json).
-
-See [`docs/forces.md`](docs/forces.md).
+The full record is [`results/force_model_spice_validation.json`](results/force_model_spice_validation.json). See [`docs/forces.md`](docs/forces.md).
 
 ## Frame compatibility
 
@@ -238,6 +306,7 @@ lunar-astrodynamics-simulation/
 ├── .github/workflows/ci.yml
 ├── docs/
 │   ├── forces.md
+│   ├── frozen_orbit_search.md
 │   ├── lola_pa_validation.md
 │   ├── model.md
 │   ├── orbital_analysis.md
@@ -246,6 +315,7 @@ lunar-astrodynamics-simulation/
 │   └── uncertainty.md
 ├── examples/
 │   ├── force_model_comparison.py
+│   ├── frozen_orbit_search.py
 │   ├── gravity_uncertainty.py
 │   ├── grgm1200a_gravity.py
 │   ├── harmonic_validation.py
@@ -274,6 +344,8 @@ lunar-astrodynamics-simulation/
 │   ├── frames.py
 │   ├── harmonics.py
 │   ├── propagation.py
+│   ├── search_defaults.py
+│   ├── stability.py
 │   ├── terrain.py
 │   └── uncertainty.py
 └── tests/
@@ -283,6 +355,8 @@ lunar-astrodynamics-simulation/
 
 This is research and validation software, not certified flight-dynamics software.
 
+A top-ranked search result is a numerical candidate under the stated model, epoch, duration, grid, refinement, constraints and ranking policy. It is not automatically a flight-certified frozen orbit, a guarantee of stationkeeping-free operation, or proof of long-term stability. Short propagation horizons can miss long-period instability and coarse grids can miss narrow stable regions. Promising candidates should be re-propagated for much longer periods at appropriate high gravity/force-model fidelity and through relevant uncertainty ensembles.
+
 The prograde modified equinoctial convention does not cover the exact 180-degree retrograde-equatorial singularity; a complementary retrograde formulation is not yet implemented. The current `orbit_history(...)` stability product assumes a bound elliptic trajectory because it reports a finite aposelene. Classical elements remain intentionally unavailable where their defining angles do not exist.
 
 High-fidelity lunar runs still require appropriate high-degree gravity, compatible lunar orientation/frame kernels, terrain resolution, gravity uncertainty treatment and a force model selected for the required prediction horizon. Earth and Sun are point-mass third bodies here. The current model does not include lunar tides/time-variable gravity, Earth oblateness as an extended perturber, relativity, other planetary third bodies, Earth radiation pressure, lunar albedo/thermal radiation, maneuvers, thrust, mass depletion or navigation-estimation error.
@@ -291,7 +365,7 @@ SRP is a configurable cannonball model. It does not model spacecraft attitude, s
 
 The package does not construct the complete GRGM1200A covariance matrix internally. Terrain uncertainty, state covariance propagation and orbit determination are also not yet included.
 
-The repository does not bundle NASA gravity/terrain products or NAIF kernels. Kernel coverage, kernel provenance, frame selection, epoch and integration settings remain caller-controlled parts of the numerical model.
+The repository does not bundle NASA gravity/terrain products or NAIF kernels. Kernel coverage, kernel provenance, frame selection, epoch, integration settings, search space, ranking policy and constraints remain caller-controlled parts of the numerical model.
 
 ## Cite this repository
 
