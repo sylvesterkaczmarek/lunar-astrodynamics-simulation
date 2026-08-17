@@ -81,9 +81,43 @@ These values were copied into `tests/test_lola_reference.py` as an offline index
 
 The PDS LDEM_4 grid is in the DE421 Mean Earth/Polar Axis frame. It is used to validate the file reader, not as an implicit substitute for the recommended DE421 Principal Axes terrain grid.
 
+## SPICE Earth/Sun perturbation workflow
+
+Install the optional SPICE dependency and download the small generic kernel set used by the force-model example:
+
+```bash
+python -m pip install -e .[spice]
+python scripts/download_force_model_kernels.py
+```
+
+The script downloads:
+
+```text
+data/spice/naif0012.tls
+data/spice/de440s.bsp
+data/spice/pck00011.tpc
+```
+
+Run the four-level force comparison with an explicit UTC epoch:
+
+```bash
+python examples/force_model_comparison.py \
+  --kernel-dir data/spice \
+  --epoch-utc 2026-08-17T00:00:00 \
+  --duration-days 7 \
+  --samples 1001 \
+  --output results/force_model_example.json
+```
+
+`SpiceEphemeris` converts that epoch to ET using the loaded leap-seconds kernel and records the numerical ET, inertial frame, Moon observer, aberration mode and loaded kernel list. Integration time is always interpreted as elapsed seconds from that fixed ET epoch.
+
+The force context deliberately uses geometric SPICE positions (`abcorr=NONE`). Earth and Sun are returned relative to the Moon in the chosen inertial frame. The low-degree comparison example evaluates J2 in `IAU_MOON` using `pck00011.tpc` and rotates its acceleration back to J2000.
+
+The archive-level two-day SPICE validation performed on 17 August 2026 is stored in `results/force_model_spice_validation.json`. Routine CI does not download NAIF kernels; it tests third-body, SRP, eclipse and SPICE-context behavior using analytical and synthetic fixtures.
+
 ## Frame provenance
 
-A reproducible combined GRAIL/LOLA run should record both frame transformations independently. The recommended Goddard terrain grid is `MOON_PA_DE421`, while GRGM1200A is a DE430 gravity solution. The library requires the terrain rotation's declared frame to equal the terrain model frame and does not infer that one principal-axes realization can be substituted for another.
+A reproducible combined GRAIL/LOLA/perturbation run should record each frame transformation independently. The recommended Goddard terrain grid is `MOON_PA_DE421`, GRGM1200A is a DE430 gravity solution, and the low-degree force-isolation example uses `IAU_MOON`. These names are not interchangeable.
 
 For science propagation, record:
 
@@ -91,14 +125,17 @@ For science propagation, record:
 - inertial frame;
 - gravity body-fixed frame;
 - terrain body-fixed frame;
-- epoch/ephemeris time offset;
+- UTC and numerical ET epoch;
+- SPICE aberration correction;
 - gravity product and truncation;
 - terrain product and prepared resolution;
+- enabled third bodies and their mass parameters;
+- SRP mass, area, reflectivity coefficient and eclipse model when enabled;
 - integration tolerances and maximum step.
 
 ## What CI verifies
 
-Routine CI avoids the large external GRGM1200A and LOLA products. It verifies the implementations with synthetic and frozen-reference fixtures, including:
+Routine CI avoids large external GRGM1200A and LOLA products and avoids network-dependent NAIF kernel downloads. It verifies the implementations with analytical, synthetic and frozen-reference fixtures, including:
 
 - two-body and J2 regressions;
 - high-degree spherical-harmonic validation through degree 1200;
@@ -111,8 +148,15 @@ Routine CI avoids the large external GRGM1200A and LOLA products. It verifies th
 - terrain-aware impact event root finding and impact geometry;
 - GMT/netCDF terrain loading;
 - PDS3 IMG/label scaling, byte order and coordinate reconstruction;
-- selected reference elevations independently observed from the official PDS LDEM_4 product;
+- selected reference elevations independently observed from official LOLA products;
 - prepared NPZ metadata round trips;
+- composable force summation and per-component diagnostics;
+- differential third-body acceleration against analytic geometries;
+- distant-third-body inverse-cube limiting behavior;
+- SPICE epoch, target and kernel-provenance behavior with a deterministic mock;
+- SRP one-AU magnitude and inverse-square distance scaling;
+- full sunlight, full lunar umbra, annular and partial-disk eclipse cases;
+- continuous penumbra transitions;
 - end-to-end terrain-clearance smoke propagation.
 
-This keeps source-code verification deterministic while retaining separate scripts for live archive validation.
+This keeps source-code verification deterministic while retaining separate scripts and recorded results for live archive validation.
