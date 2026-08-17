@@ -14,9 +14,42 @@ python examples/harmonic_validation.py
 python examples/gravity_uncertainty.py --samples 16 --seed 20260817 --duration-days 1
 python examples/terrain_clearance.py
 python examples/nonsingular_analysis.py --orbits 10
+python examples/frozen_orbit_search.py --quick \
+  --output /tmp/frozen_search.json \
+  --csv /tmp/frozen_search.csv \
+  --map-csv /tmp/frozen_map.csv
 ```
 
 The terrain example is self-contained and compares a mean-radius collision model with a synthetic gridded surface containing a 6 km mountain. The nonsingular example includes an exact circular-equatorial state, for which classical RAAN is intentionally rejected, and a nearly circular polar J2 propagation analysed with eccentricity vectors and modified equinoctial elements.
+
+The frozen-orbit quick example is also self-contained. It performs a deterministic low-degree J2 coarse-to-fine search and is intended to verify the search workflow and metric plumbing, not to serve as a high-degree lunar frozen-orbit truth result.
+
+## Stability-search reproducibility
+
+A reproducible search should preserve more than the final ranked table. Store or record:
+
+- the complete `StabilitySearchSpace`, including whether altitude means semimajor-axis altitude or absolute semimajor axis;
+- periapsis parameterization: argument of periapsis or longitude of periapsis;
+- initial anomaly range;
+- the coarse grid and `RefinementSettings`;
+- propagation duration and output sample count;
+- integration method, tolerances and maximum step;
+- `apsis_eccentricity_threshold`;
+- all `StabilityConstraints`;
+- every scale and weight in `StabilityRankingPolicy`;
+- nominal `SearchDynamics.provenance()`;
+- selected harmonic degree/order;
+- all uncertainty-dynamics provenance and the adverse percentile;
+- terrain product, terrain frame, prepared resolution and clearance-search resolution when terrain is used;
+- worker count and whether each supplied force model was explicitly marked parallel-safe.
+
+`StabilitySearchResult.write_json(...)` stores the search definition, settings, dynamics provenance and every candidate metric/ranking breakdown. `CoarseToFineSearchResult.write_json(...)` additionally stores the coarse and refined stages and the coarse seed candidate ids.
+
+The grid and refinement algorithms do not use random sampling. Candidate ids are assigned in deterministic physical-state order, and physically duplicate circular/equatorial states are removed using their modified-equinoctial representation before propagation. Parallel execution uses ordered executor mapping so returned candidate ordering remains deterministic for force providers that themselves behave deterministically.
+
+A ranking penalty is reproducible only together with its scales and weights. It is not a universal definition of a frozen orbit. Preserve the individual periselene/aposelene, eccentricity-vector, eccentricity, apsidal, plane, clearance and lifetime metrics when comparing studies.
+
+See `docs/frozen_orbit_search.md` for the metric definitions, ranking convention and interpretation limits.
 
 ## Orbital-analysis conventions
 
@@ -39,6 +72,8 @@ python scripts/download_grgm1200a.py
 ```
 
 The nominal SHADR table remains external to Git. Covariance-derived clone perturbations can be downloaded selectively with `scripts/download_grgm1200a_clones.py`.
+
+For a high-degree stability search, the SHADR model must be paired with an appropriate caller-loaded lunar body-fixed transformation. The search API records the supplied frame and harmonic truncation but deliberately does not infer that an arbitrary lunar SPICE frame is compatible with the gravity solution.
 
 ## External LOLA terrain data
 
@@ -126,13 +161,13 @@ python examples/force_model_comparison.py \
 
 The force context deliberately uses geometric SPICE positions (`abcorr=NONE`). Earth and Sun are returned relative to the Moon in the chosen inertial frame. The low-degree comparison example evaluates J2 in `IAU_MOON` using `pck00011.tpc` and rotates its acceleration back to J2000.
 
-The archive-level two-day SPICE validation performed on 17 August 2026 is stored in `results/force_model_spice_validation.json`. Routine CI does not download NAIF kernels; it tests third-body, SRP, eclipse and SPICE-context behavior using analytical and synthetic fixtures.
+The archive-level two-day SPICE validation performed on 17 August 2026 is stored in `results/force_model_spice_validation.json`. Routine CI does not download NAIF kernels; it tests third-body, SRP, eclipse and SPICE-context behaviour using analytical and synthetic fixtures.
 
 ## Frame provenance
 
 A reproducible combined GRAIL/LOLA/perturbation run should record each frame transformation independently. The recommended Goddard terrain grid is `MOON_PA_DE421`, GRGM1200A is a DE430 gravity solution, and the low-degree force-isolation example uses `IAU_MOON`. These names are not interchangeable.
 
-For science propagation, record:
+For science propagation and search, record:
 
 - SPICE kernel filenames and versions;
 - inertial frame;
@@ -145,7 +180,10 @@ For science propagation, record:
 - enabled third bodies and their mass parameters;
 - SRP mass, area, reflectivity coefficient and eclipse model when enabled;
 - orbital-analysis representation and reference radius;
-- propagation sampling cadence, integration tolerances and maximum step.
+- propagation sampling cadence, integration tolerances and maximum step;
+- stability search grid, refinement, constraints and ranking policy;
+- uncertainty realizations and adverse percentile;
+- parallel worker count and force-provider thread-safety declaration.
 
 ## What CI verifies
 
@@ -157,7 +195,7 @@ Routine CI avoids large external GRGM1200A and LOLA products and avoids network-
 - SHADR uncertainty retention and reproducible diagonal sampling;
 - GRGM1200A clone perturbation semantics and ensemble metrics;
 - terrain bilinear interpolation and periodic longitude;
-- exact-pole and pixel-polar-cap behavior;
+- exact-pole and pixel-polar-cap behaviour;
 - explicit terrain-frame mismatch rejection;
 - terrain-aware impact event root finding and impact geometry;
 - GMT/netCDF terrain loading;
@@ -166,8 +204,8 @@ Routine CI avoids large external GRGM1200A and LOLA products and avoids network-
 - prepared NPZ metadata round trips;
 - composable force summation and per-component diagnostics;
 - differential third-body acceleration against analytic geometries;
-- distant-third-body inverse-cube limiting behavior;
-- SPICE epoch, target and kernel-provenance behavior with a deterministic mock;
+- distant-third-body inverse-cube limiting behaviour;
+- SPICE epoch, target and kernel-provenance behaviour with a deterministic mock;
 - SRP one-AU magnitude and inverse-square distance scaling;
 - full sunlight, full lunar umbra, annular and partial-disk eclipse cases;
 - continuous penumbra transitions;
@@ -178,6 +216,14 @@ Routine CI avoids large external GRGM1200A and LOLA products and avoids network-
 - periselene/aposelene and reference-altitude analysis;
 - separate sampled terrain clearance;
 - secular drift and detrended bounded-oscillation statistics;
-- end-to-end terrain-clearance and nonsingular-analysis smoke propagations.
+- stability metrics beyond survival, including periselene/aposelene spread and eccentricity-vector drift;
+- physical deduplication of singular classical search parameter combinations;
+- deterministic serial/parallel candidate ordering for parallel-safe dynamics;
+- uncertainty realization retention and adverse summaries;
+- terrain-clearance search constraints;
+- coarse-to-fine refinement and stability-map generation;
+- harmonic-degree provenance and JSON/CSV search output;
+- surface-safe public low-lunar default ranges;
+- end-to-end terrain-clearance, nonsingular-analysis and frozen-orbit-search smoke workflows.
 
 This keeps source-code verification deterministic while retaining separate scripts and recorded results for live archive validation.

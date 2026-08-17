@@ -35,6 +35,9 @@ jobs:
       - name: Nonsingular orbit analysis smoke example
         if: matrix.python-version == '3.12'
         run: python examples/nonsingular_analysis.py --orbits 2 --samples-per-orbit 40 --output /tmp/nonsingular_analysis.json
+      - name: Frozen-orbit search smoke example
+        if: matrix.python-version == '3.12'
+        run: python examples/frozen_orbit_search.py --quick --output /tmp/frozen_search.json --csv /tmp/frozen_search.csv --map-csv /tmp/frozen_map.csv
       - name: Degree-1200 gravity benchmark smoke
         if: matrix.python-version == '3.12'
         run: python scripts/benchmark_harmonics.py --degree 1200 --repetitions 2
