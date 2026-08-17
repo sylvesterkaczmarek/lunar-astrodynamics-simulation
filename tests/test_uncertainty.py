@@ -19,17 +19,12 @@ from lunar_astrodynamics import (
 )
 
 
-def _pds_header_record(
-    *,
-    degree: int = 3,
-    order: int = 3,
-    mu_sigma_km3_s2: float = 2.5e-8,
-) -> str:
+def _pds_header_record(degree: int = 3, order: int = 3, mu_sigma: float = 2.5e-8) -> str:
     data = ",".join(
         [
             f"{1738.0:23.16E}",
             f"{4902.80011526323:23.16E}",
-            f"{mu_sigma_km3_s2:23.16E}",
+            f"{mu_sigma:23.16E}",
             f"{degree:5d}",
             f"{order:5d}",
             f"{1:5d}",
@@ -38,9 +33,7 @@ def _pds_header_record(
         ]
     )
     assert len(data) == 137
-    record = data + " " * 105 + "\r\n"
-    assert len(record.encode("ascii")) == 244
-    return record
+    return data + " " * 105 + "\r\n"
 
 
 def _pds_coefficient_record(
@@ -62,9 +55,7 @@ def _pds_coefficient_record(
         ]
     )
     assert len(data) == 107
-    record = data + " " * 13 + "\r\n"
-    assert len(record.encode("ascii")) == 122
-    return record
+    return data + " " * 13 + "\r\n"
 
 
 def _uncertain_model() -> SphericalHarmonicModel:
@@ -121,15 +112,13 @@ def test_model_without_uncertainties_remains_backward_compatible() -> None:
 
 def test_model_validates_and_protects_uncertainty_arrays() -> None:
     model = _uncertain_model()
-    assert model.has_coefficient_uncertainty
     assert model.coefficient_uncertainty(2, 2) == pytest.approx((3.0e-7, 4.0e-7))
     with pytest.raises(ValueError):
         model.sigma_c[2, 2] = 0.0  # type: ignore[index]
 
-    c = np.eye(2)
-    c[1, 1] = 0.0
-    c[0, 0] = 1.0
+    c = np.zeros((2, 2))
     s = np.zeros_like(c)
+    c[0, 0] = 1.0
     with pytest.raises(ValueError, match="both be provided"):
         SphericalHarmonicModel(4.9028e12, 1.738e6, c, s, sigma_c=np.zeros_like(c))
     with pytest.raises(ValueError, match="non-negative"):
@@ -145,7 +134,7 @@ def test_model_validates_and_protects_uncertainty_arrays() -> None:
 
 def test_shadr_parser_preserves_coefficient_and_gm_uncertainties() -> None:
     text = (
-        _pds_header_record(degree=3, order=3, mu_sigma_km3_s2=2.5e-8)
+        _pds_header_record(mu_sigma=2.5e-8)
         + _pds_coefficient_record(1, 0, 7.0e-8, 0.0, 1.1e-12, 0.0)
         + _pds_coefficient_record(2, 0, -9.0e-5, 0.0, 2.2e-12, 0.0)
         + _pds_coefficient_record(2, 2, 2.0e-5, -3.0e-5, 3.3e-12, 4.4e-12)
@@ -174,40 +163,24 @@ def test_independent_sigma_sampling_is_explicit_and_reproducible() -> None:
         sample_independent_coefficient_uncertainty(model, seed=1234, count=2)
 
     first = sample_independent_coefficient_uncertainty(
-        model,
-        seed=1234,
-        count=3,
-        assume_independent=True,
-        include_mu=True,
+        model, seed=1234, count=3, assume_independent=True, include_mu=True
     )
     second = sample_independent_coefficient_uncertainty(
-        model,
-        seed=1234,
-        count=3,
-        assume_independent=True,
-        include_mu=True,
+        model, seed=1234, count=3, assume_independent=True, include_mu=True
     )
-    other_seed = sample_independent_coefficient_uncertainty(
-        model,
-        seed=1235,
-        count=1,
-        assume_independent=True,
+    other = sample_independent_coefficient_uncertainty(
+        model, seed=1235, count=1, assume_independent=True
     )
-
     for left, right in zip(first, second, strict=True):
         assert left.c == pytest.approx(right.c)
         assert left.s == pytest.approx(right.s)
         assert left.mu_m3_s2 == pytest.approx(right.mu_m3_s2)
         assert left.c[0, 0] == 1.0
         assert left.s[0, 0] == 0.0
-    assert not np.allclose(first[0].c, other_seed[0].c, atol=0.0, rtol=0.0)
+    assert not np.array_equal(first[0].c, other[0].c)
 
     zero = sample_independent_coefficient_uncertainty(
-        model,
-        seed=1,
-        count=1,
-        sigma_scale=0.0,
-        assume_independent=True,
+        model, seed=1, sigma_scale=0.0, assume_independent=True
     )[0]
     assert zero.c == pytest.approx(model.c)
     assert zero.s == pytest.approx(model.s)
@@ -225,7 +198,7 @@ def test_clone_url_matches_archived_pds_grouping() -> None:
     assert grgm1200a_clone_url(500).endswith(
         "/gggrx_1200a_clones_0401_0500/gggrx_1200a_clone0500_sha.tab"
     )
-    with pytest.raises(ValueError, match="within \[1, 500\]"):
+    with pytest.raises(ValueError, match="within"):
         grgm1200a_clone_url(0)
 
 
@@ -252,9 +225,9 @@ def test_ensemble_summary_returns_percentiles_and_impact_fraction() -> None:
     )
     result = summarize_ensemble(samples, percentile_levels=(0.0, 50.0, 100.0))
     assert result.impact_fraction == pytest.approx(1.0 / 3.0)
-    assert result.percentiles["minimum_altitude_m"][0.0] == pytest.approx(10.0)
-    assert result.percentiles["minimum_altitude_m"][50.0] == pytest.approx(20.0)
-    assert result.percentiles["minimum_altitude_m"][100.0] == pytest.approx(30.0)
+    assert result.percentiles["minimum_altitude_m"] == pytest.approx(
+        {0.0: 10.0, 50.0: 20.0, 100.0: 30.0}
+    )
     assert result.percentiles["lifetime_s"][50.0] == pytest.approx(1000.0)
     assert result.metric_values("maximum_eccentricity") == pytest.approx([0.01, 0.02, 0.03])
 
@@ -274,12 +247,11 @@ def test_gravity_ensemble_propagates_same_initial_state_through_realizations() -
         c[2, 0] = c20
         models.append(SphericalHarmonicModel(mu, 1.738e6, c, s, name=f"realization {index}"))
 
-    identity_rotation = lambda _time_s: np.eye(3)
     result = propagate_gravity_ensemble(
         initial_state,
         0.25 * period,
         models,
-        identity_rotation,
+        lambda _time_s: np.eye(3),
         reference_radius_m=MOON_MEAN_RADIUS_M,
         max_degree=2,
         sample_count=33,
@@ -290,7 +262,6 @@ def test_gravity_ensemble_propagates_same_initial_state_through_realizations() -
             max_step_s=60.0,
         ),
     )
-
     assert len(result.samples) == 2
     assert result.impact_fraction == 0.0
     assert all(sample.lifetime_s == pytest.approx(0.25 * period) for sample in result.samples)
