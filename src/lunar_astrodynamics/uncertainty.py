@@ -26,6 +26,66 @@ GRGM1200A_CLONE_EXPECTED_SIZE_BYTES = 44_029_817
 
 
 @dataclass(frozen=True)
+class GravityCoefficientPerturbation:
+    """A coefficient delta field to be added to a compatible nominal model."""
+
+    c_delta: FloatArray
+    s_delta: FloatArray
+    name: str = "gravity coefficient perturbation"
+    frame: str = "body-fixed"
+    normalization: str = "4pi"
+
+    def __post_init__(self) -> None:
+        c_delta = np.array(self.c_delta, dtype=float, copy=True)
+        s_delta = np.array(self.s_delta, dtype=float, copy=True)
+        if (
+            c_delta.ndim != 2
+            or c_delta.shape[0] != c_delta.shape[1]
+            or s_delta.shape != c_delta.shape
+        ):
+            raise ValueError("c_delta and s_delta must be matching square arrays")
+        if not np.all(np.isfinite(c_delta)) or not np.all(np.isfinite(s_delta)):
+            raise ValueError("coefficient perturbations must be finite")
+        if not np.isclose(c_delta[0, 0], 0.0, atol=0.0, rtol=0.0):
+            raise ValueError("c_delta[0,0] must be zero")
+        if not np.isclose(s_delta[0, 0], 0.0, atol=0.0, rtol=0.0):
+            raise ValueError("s_delta[0,0] must be zero")
+        upper = np.triu_indices(c_delta.shape[0], k=1)
+        if np.any(c_delta[upper] != 0.0) or np.any(s_delta[upper] != 0.0):
+            raise ValueError("perturbations with order m > degree n must be zero")
+        if self.normalization.lower() != "4pi":
+            raise ValueError("this library requires geodesy 4pi-normalized perturbations")
+        c_delta.setflags(write=False)
+        s_delta.setflags(write=False)
+        object.__setattr__(self, "c_delta", c_delta)
+        object.__setattr__(self, "s_delta", s_delta)
+
+    @property
+    def max_degree(self) -> int:
+        return self.c_delta.shape[0] - 1
+
+    def truncated(self, max_degree: int, max_order: int | None = None) -> "GravityCoefficientPerturbation":
+        degree = min(int(max_degree), self.max_degree)
+        if degree < 0:
+            raise ValueError("max_degree must be non-negative")
+        order = degree if max_order is None else min(int(max_order), degree)
+        if order < 0:
+            raise ValueError("max_order must be non-negative")
+        c_delta = self.c_delta[: degree + 1, : degree + 1].copy()
+        s_delta = self.s_delta[: degree + 1, : degree + 1].copy()
+        if order < degree:
+            c_delta[:, order + 1 :] = 0.0
+            s_delta[:, order + 1 :] = 0.0
+        return GravityCoefficientPerturbation(
+            c_delta,
+            s_delta,
+            name=f"{self.name} (n<={degree}, m<={order})",
+            frame=self.frame,
+            normalization=self.normalization,
+        )
+
+
+@dataclass(frozen=True)
 class OrbitUncertaintySample:
     """Scalar trajectory metrics for one gravity realization."""
 
@@ -61,7 +121,7 @@ class EnsembleUncertaintyResult:
 
 
 def grgm1200a_clone_url(index: int) -> str:
-    """Return the official PDS URL for one archived GRGM1200A clone field."""
+    """Return the official PDS URL for one archived GRGM1200A clone delta field."""
     clone = int(index)
     if clone < 1 or clone > GRGM1200A_CLONE_COUNT:
         raise ValueError("GRGM1200A clone index must be within [1, 500]")
@@ -79,19 +139,19 @@ def _parse_clone_row(line: str, line_number: int) -> tuple[int, int, float, floa
     try:
         n = int(fields[0])
         m = int(fields[1])
-        c_nm = float(fields[2].replace("D", "E").replace("d", "e"))
-        s_nm = float(fields[3].replace("D", "E").replace("d", "e"))
+        c_delta = float(fields[2].replace("D", "E").replace("d", "e"))
+        s_delta = float(fields[3].replace("D", "E").replace("d", "e"))
     except ValueError as exc:
         raise ValueError(f"invalid clone coefficient row {line_number}") from exc
     if (
         n < 0
         or m < 0
         or m > n
-        or not np.isfinite(c_nm)
-        or not np.isfinite(s_nm)
+        or not np.isfinite(c_delta)
+        or not np.isfinite(s_delta)
     ):
         raise ValueError(f"invalid clone coefficient row {line_number}")
-    return n, m, c_nm, s_nm
+    return n, m, c_delta, s_delta
 
 
 def read_grgm1200a_clone(
@@ -100,17 +160,16 @@ def read_grgm1200a_clone(
     max_degree: int | None = None,
     name: str | None = None,
     frame: str = GRGM1200A.body_fixed_frame,
-) -> SphericalHarmonicModel:
-    """Read a PDS GRGM1200A coefficient-only clone realization.
+) -> GravityCoefficientPerturbation:
+    """Read an archived PDS GRGM1200A covariance-derived clone delta field.
 
-    The archived clone realizations are not treated as uncertainty-bearing
-    nominal SHADR products. Their C/S coefficients define one correlated draw
-    from the GRGM1200A least-squares covariance system. Nominal GRGM1200A GM,
-    reference radius, normalization, and frame metadata are supplied from the
-    archived product metadata in this package.
+    GRGM1200A clone coefficients represent deviations from the nominal field,
+    not standalone lunar gravity models. This function therefore returns a
+    ``GravityCoefficientPerturbation`` with C00=S00=0. Apply it to a compatible
+    nominal model with ``apply_coefficient_perturbation`` before propagation.
 
-    A single non-coefficient preamble line is tolerated before the first
-    coefficient row. Once coefficient parsing begins, malformed rows fail.
+    A single non-coefficient preamble line is tolerated before the first data
+    row. Once coefficient parsing begins, malformed or duplicate rows fail.
     """
     degree = GRGM1200A.max_degree if max_degree is None else min(
         int(max_degree), GRGM1200A.max_degree
@@ -131,9 +190,8 @@ def read_grgm1200a_clone(
         )
         close = True
 
-    c = np.zeros((degree + 1, degree + 1), dtype=float)
-    s = np.zeros_like(c)
-    c[0, 0] = 1.0
+    c_delta = np.zeros((degree + 1, degree + 1), dtype=float)
+    s_delta = np.zeros_like(c_delta)
     seen: set[tuple[int, int]] = set()
     coefficient_rows = 0
     skipped_preamble = False
@@ -156,13 +214,17 @@ def read_grgm1200a_clone(
                 raise ValueError(
                     f"clone coefficient ({n}, {m}) exceeds GRGM1200A degree/order 1200"
                 )
+            if n == 0:
+                if m != 0 or c_nm != 0.0 or s_nm != 0.0:
+                    raise ValueError("clone degree-zero perturbation must be zero")
+                continue
             if n <= degree:
                 key = (n, m)
                 if key in seen:
                     raise ValueError(f"duplicate clone coefficient ({n}, {m})")
                 seen.add(key)
-                c[n, m] = c_nm
-                s[n, m] = s_nm
+                c_delta[n, m] = c_nm
+                s_delta[n, m] = s_nm
     finally:
         if close:
             handle.close()
@@ -172,28 +234,89 @@ def read_grgm1200a_clone(
         if len(seen) != expected:
             raise ValueError(
                 f"clone field is incomplete through degree {degree}: "
-                f"found {len(seen)} of {expected} coefficients"
+                f"found {len(seen)} of {expected} coefficient perturbations"
             )
 
-    return SphericalHarmonicModel(
-        mu_m3_s2=GRGM1200A.mu_m3_s2,
-        reference_radius_m=GRGM1200A.reference_radius_m,
-        c=c,
-        s=s,
-        name=name or getattr(path_or_file, "name", "GRGM1200A clone field"),
+    return GravityCoefficientPerturbation(
+        c_delta,
+        s_delta,
+        name=name or getattr(path_or_file, "name", "GRGM1200A clone perturbation"),
         frame=frame,
         normalization=GRGM1200A.normalization,
     )
 
 
+def apply_coefficient_perturbation(
+    nominal_model: SphericalHarmonicModel,
+    perturbation: GravityCoefficientPerturbation,
+    *,
+    name: str | None = None,
+) -> SphericalHarmonicModel:
+    """Add a coefficient delta field to a compatible nominal gravity model."""
+    if nominal_model.normalization.lower() != perturbation.normalization.lower():
+        raise ValueError("nominal model and perturbation normalization must match")
+    if nominal_model.frame != perturbation.frame:
+        raise ValueError("nominal model and perturbation body-fixed frames must match")
+    if perturbation.max_degree > nominal_model.max_degree:
+        raise ValueError("perturbation degree exceeds the nominal model degree")
+
+    c = nominal_model.c.copy()
+    s = nominal_model.s.copy()
+    degree = perturbation.max_degree
+    c[: degree + 1, : degree + 1] += perturbation.c_delta
+    s[: degree + 1, : degree + 1] += perturbation.s_delta
+    c[0, 0] = 1.0
+    s[0, 0] = 0.0
+    return SphericalHarmonicModel(
+        nominal_model.mu_m3_s2,
+        nominal_model.reference_radius_m,
+        c,
+        s,
+        name=name or f"{nominal_model.name} + {perturbation.name}",
+        frame=nominal_model.frame,
+        normalization=nominal_model.normalization,
+    )
+
+
+def _validate_grgm1200a_nominal(model: SphericalHarmonicModel) -> None:
+    if abs(model.mu_m3_s2 - GRGM1200A.mu_m3_s2) > 1.0:
+        raise ValueError("nominal model GM does not match archived GRGM1200A metadata")
+    if abs(model.reference_radius_m - GRGM1200A.reference_radius_m) > 1e-6:
+        raise ValueError("nominal model reference radius does not match GRGM1200A")
+    if model.normalization.lower() != GRGM1200A.normalization.lower():
+        raise ValueError("nominal model normalization does not match GRGM1200A")
+    if model.frame != GRGM1200A.body_fixed_frame:
+        raise ValueError(
+            "nominal GRGM1200A clone analysis requires the archived DE430 principal-axes frame metadata"
+        )
+
+
 def load_grgm1200a_clone_ensemble(
+    nominal_model: SphericalHarmonicModel,
     paths: Iterable[str | Path],
     *,
     max_degree: int | None = None,
 ) -> tuple[SphericalHarmonicModel, ...]:
-    """Load multiple archived GRGM1200A clone realizations."""
+    """Apply multiple archived GRGM1200A clone deltas to the nominal field."""
+    _validate_grgm1200a_nominal(nominal_model)
+    degree = nominal_model.max_degree if max_degree is None else min(
+        int(max_degree), nominal_model.max_degree
+    )
+    if degree < 0:
+        raise ValueError("max_degree must be non-negative")
+    base = nominal_model.truncated(degree)
+
     models = tuple(
-        read_grgm1200a_clone(path, max_degree=max_degree, name=Path(path).name)
+        apply_coefficient_perturbation(
+            base,
+            read_grgm1200a_clone(
+                path,
+                max_degree=degree,
+                name=Path(path).name,
+                frame=base.frame,
+            ),
+            name=f"{base.name} + {Path(path).name}",
+        )
         for path in paths
     )
     if not models:
@@ -212,10 +335,9 @@ def sample_independent_coefficient_uncertainty(
 ) -> tuple[SphericalHarmonicModel, ...]:
     """Draw reproducible diagonal-only coefficient perturbations.
 
-    This is intentionally opt-in because the SHADR coefficient uncertainty
-    fields do not encode the cross-covariances. For GRGM1200A science studies,
-    archived covariance-derived clone fields are preferred when correlations
-    matter.
+    This is intentionally opt-in because SHADR coefficient uncertainty fields
+    do not encode cross-covariances. For GRGM1200A science studies, archived
+    covariance-derived clone fields are preferred when correlations matter.
     """
     if not assume_independent:
         raise ValueError(
@@ -256,10 +378,10 @@ def sample_independent_coefficient_uncertainty(
 
         realizations.append(
             SphericalHarmonicModel(
-                mu_m3_s2=mu,
-                reference_radius_m=model.reference_radius_m,
-                c=c,
-                s=s,
+                mu,
+                model.reference_radius_m,
+                c,
+                s,
                 name=f"{model.name} diagonal-sigma draw {index + 1} seed {int(seed)}",
                 frame=model.frame,
                 normalization=model.normalization,
@@ -268,7 +390,6 @@ def sample_independent_coefficient_uncertainty(
                 mu_sigma_m3_s2=model.mu_sigma_m3_s2,
             )
         )
-
     return tuple(realizations)
 
 
@@ -280,7 +401,6 @@ def _eccentricity_and_apsides(
     eccentricity = np.empty(states.shape[1], dtype=float)
     periselene = np.full(states.shape[1], np.nan, dtype=float)
     aposelene = np.full(states.shape[1], np.nan, dtype=float)
-
     for index in range(states.shape[1]):
         r = states[:3, index]
         v = states[3:, index]
@@ -294,7 +414,6 @@ def _eccentricity_and_apsides(
             a = -mu_m3_s2 / (2.0 * energy)
             periselene[index] = a * (1.0 - e) - reference_radius_m
             aposelene[index] = a * (1.0 + e) - reference_radius_m
-
     return eccentricity, periselene, aposelene
 
 
@@ -312,26 +431,21 @@ def _trajectory_metrics(
     eccentricity, periselene, aposelene = _eccentricity_and_apsides(
         states, mu_m3_s2, reference_radius_m
     )
-
     event_times = solution.t_events[0]  # type: ignore[attr-defined]
     impacted = bool(len(event_times))
     lifetime_s = float(event_times[0]) if impacted else float(requested_duration_s)
-
     finite_periselene = periselene[np.isfinite(periselene)]
     finite_aposelene = aposelene[np.isfinite(aposelene)]
-    minimum_periselene = (
-        float(np.min(finite_periselene)) if finite_periselene.size else float("nan")
-    )
-    maximum_aposelene = (
-        float(np.max(finite_aposelene)) if finite_aposelene.size else float("nan")
-    )
-
     return OrbitUncertaintySample(
         model_name=model_name,
         minimum_altitude_m=float(np.min(altitude)),
         maximum_altitude_m=float(np.max(altitude)),
-        minimum_osculating_periselene_altitude_m=minimum_periselene,
-        maximum_osculating_aposelene_altitude_m=maximum_aposelene,
+        minimum_osculating_periselene_altitude_m=(
+            float(np.min(finite_periselene)) if finite_periselene.size else float("nan")
+        ),
+        maximum_osculating_aposelene_altitude_m=(
+            float(np.max(finite_aposelene)) if finite_aposelene.size else float("nan")
+        ),
         maximum_eccentricity=float(np.max(eccentricity)),
         final_eccentricity=float(eccentricity[-1]),
         lifetime_s=lifetime_s,
@@ -372,7 +486,6 @@ def summarize_ensemble(
             percentiles[metric] = {
                 level: float(value) for level, value in zip(levels, computed, strict=True)
             }
-
     return EnsembleUncertaintyResult(
         samples=tuple(samples),
         percentile_levels=levels,
@@ -396,9 +509,11 @@ def propagate_gravity_ensemble(
     settings: PropagationSettings = PropagationSettings(),
     percentile_levels: Sequence[float] = (5.0, 50.0, 95.0),
 ) -> EnsembleUncertaintyResult:
-    """Propagate one initial state through several gravity realizations."""
+    """Propagate one initial state through several compatible gravity realizations."""
     if not models:
         raise ValueError("at least one gravity realization is required")
+    if len({model.frame for model in models}) != 1:
+        raise ValueError("all gravity realizations must use the same body-fixed frame")
     if sample_times_s is None:
         if sample_count < 2:
             raise ValueError("sample_count must be at least two")
@@ -433,5 +548,4 @@ def propagate_gravity_ensemble(
                 requested_duration_s=duration_s,
             )
         )
-
     return summarize_ensemble(samples, percentile_levels=percentile_levels)
