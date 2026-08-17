@@ -30,18 +30,28 @@ from lunar_astrodynamics.propagation import PropagationSettings, propagate_with_
 APOLLO_11_SOURCE = "NASA Apollo 11 Lunar Surface Journal mission overview"
 APOLLO_17_SOURCE = "NASA Science Taurus-Littrow Valley resource"
 BODY_FIXED_FRAME = "MOON_ME_DE421"
+SCIENCE_PLANE_LONGITUDE_DEG_EAST = 27.0
 
 
-def _polar_state(rotation_body_fixed_from_inertial, mu_m3_s2: float, altitude_m: float) -> np.ndarray:
+def _polar_state(
+    rotation_body_fixed_from_inertial,
+    mu_m3_s2: float,
+    altitude_m: float,
+    *,
+    initial_longitude_deg_east: float = 0.0,
+) -> np.ndarray:
     radius = MOON_MEAN_RADIUS_M + altitude_m
     speed = np.sqrt(mu_m3_s2 / radius)
     rotation = rotation_body_fixed_from_inertial(0.0)
-    # At the epoch, choose an inertial circular state whose position lies on the
-    # body-fixed +x axis and whose velocity lies along the body-fixed +z axis.
-    # The orbit normal is therefore instantaneously along the lunar equatorial
-    # plane and the osculating inclination to the lunar pole is about 90 deg.
-    position_i = rotation.T @ np.array([radius, 0.0, 0.0])
-    velocity_i = rotation.T @ np.array([0.0, 0.0, speed])
+    longitude = np.deg2rad(float(initial_longitude_deg_east))
+    # At the epoch, choose an inertial circular state whose body-fixed position
+    # lies on the lunar equator at the requested east longitude and whose
+    # velocity lies along body-fixed +z. The instantaneous osculating plane is
+    # therefore polar and crosses the chosen longitude and its antipode.
+    position_b = radius * np.array([np.cos(longitude), np.sin(longitude), 0.0])
+    velocity_b = np.array([0.0, 0.0, speed])
+    position_i = rotation.T @ position_b
+    velocity_i = rotation.T @ velocity_b
     return np.concatenate((position_i, velocity_i))
 
 
@@ -210,7 +220,12 @@ def _science_context(kernel_dir: Path, epoch_utc: str, altitude_m: float):
         BODY_FIXED_FRAME,
         et_offset_s=ephemeris.epoch_et_s,
     )
-    state = _polar_state(rotation, GRGM1200A_J2.mu_m3_s2, altitude_m)
+    state = _polar_state(
+        rotation,
+        GRGM1200A_J2.mu_m3_s2,
+        altitude_m,
+        initial_longitude_deg_east=SCIENCE_PLANE_LONGITUDE_DEG_EAST,
+    )
     # NASA/LRO precise landing coordinates, east-positive. Elevation is kept at
     # the reference sphere in this worked example; use LunarSurfaceSite.from_terrain
     # with a compatible terrain model when local topographic height matters.
@@ -232,6 +247,7 @@ def _science_context(kernel_dir: Path, epoch_utc: str, altitude_m: float):
     )
     mode = {
         "mode": "NAIF DE421 lunar-frame worked example",
+        "initial_polar_plane_longitude_deg_east": SCIENCE_PLANE_LONGITUDE_DEG_EAST,
         "site_coordinate_note": (
             "Apollo 11: NASA Lunar Surface Journal 0.67409 N, 23.47298 E; "
             "Apollo 17: NASA Science 20.1911 N, 30.7769 E."
