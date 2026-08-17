@@ -18,11 +18,15 @@ python examples/frozen_orbit_search.py --quick \
   --output /tmp/frozen_search.json \
   --csv /tmp/frozen_search.csv \
   --map-csv /tmp/frozen_map.csv
+python examples/targeting_stationkeeping.py --quick \
+  --output /tmp/targeting_stationkeeping.json
 ```
 
 The terrain example is self-contained and compares a mean-radius collision model with a synthetic gridded surface containing a 6 km mountain. The nonsingular example includes an exact circular-equatorial state, for which classical RAAN is intentionally rejected, and a nearly circular polar J2 propagation analysed with eccentricity vectors and modified equinoctial elements.
 
 The frozen-orbit quick example is also self-contained. It performs a deterministic low-degree J2 coarse-to-fine search and is intended to verify the search workflow and metric plumbing, not to serve as a high-degree lunar frozen-orbit truth result.
+
+The targeting/station-keeping quick example uses the same self-contained low-degree J2 context. It validates the complete workflow from finite-difference sensitivity through local correction and a threshold-triggered impulsive maintenance simulation. Its delta-v values are workflow regression outputs, not a flight operations budget.
 
 ## Stability-search reproducibility
 
@@ -51,6 +55,47 @@ A ranking penalty is reproducible only together with its scales and weights. It 
 
 See `docs/frozen_orbit_search.md` for the metric definitions, ranking convention and interpretation limits.
 
+## Sensitivity and targeting reproducibility
+
+Numerical sensitivities and differential correction require more metadata than a nominal propagation. Record:
+
+- the nominal Cartesian state or `OrbitSearchPoint`;
+- propagation start epoch and duration;
+- complete `SearchDynamics.provenance()`;
+- integration method, tolerances and maximum step;
+- each differentiated input variable;
+- its nominal finite-difference perturbation size;
+- the selected derivative step after the half/base/double sweep;
+- half/base and base/double disagreement diagnostics;
+- `FiniteDifferenceSettings` thresholds;
+- every correction-variable scale and bound;
+- the exact target residual definitions and normalization scales;
+- `DifferentialCorrectionSettings`, including damping, condition-number limit, step limit and line-search factors;
+- the complete iteration history, including rejected or failed iterations;
+- terrain product/frame/rotation if terrain clearance is part of the target;
+- body-fixed frame and trajectory sampling density if periapsis location is targeted.
+
+`finite_difference_state_transition(...)` and `orbit_parameter_sensitivity(...)` return the numerical derivative matrix together with per-column step diagnostics. Do not compare derivative values from two studies without also comparing their perturbation sizes, propagation tolerances and force-model provenance.
+
+`DifferentialCorrectionResult` stores convergence status, a human-readable failure/success reason, initial/final residuals, rank and condition diagnostics, unstable derivative columns, accepted line-search factors and scaled step sizes. A non-converged result must remain non-converged in downstream reporting.
+
+For station-keeping studies additionally record:
+
+- all `StationKeepingPolicy` trigger thresholds;
+- target periselene/aposelene and optional eccentricity-vector restoration policy;
+- control-check interval;
+- active RTN correction components;
+- correction finite-difference step and scaling;
+- maximum allowed delta-v per maneuver;
+- maximum maneuver count;
+- samples per control interval;
+- optional UTC reporting epoch and the SPICE/dynamics epoch it is intended to represent;
+- every maneuver time, trigger reason, delta-v vector/magnitude and pre/post osculating state metrics.
+
+Segmented station-keeping propagation evaluates the force model at absolute elapsed time, not a reset local time, so ephemeris-driven dynamics remain deterministic across control intervals.
+
+See `docs/targeting.md` for the numerical method, controller definition and limitations.
+
 ## Orbital-analysis conventions
 
 For reproducible stability studies, record the Cartesian reference frame, gravitational parameter, reference radius and the element convention used in analysis.
@@ -73,7 +118,7 @@ python scripts/download_grgm1200a.py
 
 The nominal SHADR table remains external to Git. Covariance-derived clone perturbations can be downloaded selectively with `scripts/download_grgm1200a_clones.py`.
 
-For a high-degree stability search, the SHADR model must be paired with an appropriate caller-loaded lunar body-fixed transformation. The search API records the supplied frame and harmonic truncation but deliberately does not infer that an arbitrary lunar SPICE frame is compatible with the gravity solution.
+For a high-degree stability or targeting study, the SHADR model must be paired with an appropriate caller-loaded lunar body-fixed transformation. The APIs record the supplied frame and harmonic truncation but deliberately do not infer that an arbitrary lunar SPICE frame is compatible with the gravity solution.
 
 ## External LOLA terrain data
 
@@ -167,7 +212,7 @@ The archive-level two-day SPICE validation performed on 17 August 2026 is stored
 
 A reproducible combined GRAIL/LOLA/perturbation run should record each frame transformation independently. The recommended Goddard terrain grid is `MOON_PA_DE421`, GRGM1200A is a DE430 gravity solution, and the low-degree force-isolation example uses `IAU_MOON`. These names are not interchangeable.
 
-For science propagation and search, record:
+For science propagation, search, targeting and station-keeping analysis, record:
 
 - SPICE kernel filenames and versions;
 - inertial frame;
@@ -182,8 +227,11 @@ For science propagation and search, record:
 - orbital-analysis representation and reference radius;
 - propagation sampling cadence, integration tolerances and maximum step;
 - stability search grid, refinement, constraints and ranking policy;
+- sensitivity perturbation sizes and selected finite-difference steps;
+- target definitions, correction scales and convergence settings;
+- station-keeping thresholds and controller cadence;
 - uncertainty realizations and adverse percentile;
-- parallel worker count and force-provider thread-safety declaration.
+- parallel worker count and force-provider thread-safety declaration where applicable.
 
 ## What CI verifies
 
@@ -224,6 +272,14 @@ Routine CI avoids large external GRGM1200A and LOLA products and avoids network-
 - coarse-to-fine refinement and stability-map generation;
 - harmonic-degree provenance and JSON/CSV search output;
 - surface-safe public low-lunar default ranges;
-- end-to-end terrain-clearance, nonsingular-analysis and frozen-orbit-search smoke workflows.
+- an analytically exact zero-acceleration finite-difference state-transition matrix;
+- two-body finite-difference step-size consistency;
+- an analytically solvable terminal-state differential correction;
+- explicit zero-rank/non-converged corrector reporting;
+- two-body periselene/aposelene parameter sensitivities against closed-form derivatives;
+- two-body orbit-parameter targeting convergence;
+- explicit failure when a terrain-clearance target is requested without terrain;
+- no-burn, successful-burn and over-limit station-keeping cases;
+- end-to-end terrain-clearance, nonsingular-analysis, frozen-orbit-search and targeting/station-keeping smoke workflows.
 
 This keeps source-code verification deterministic while retaining separate scripts and recorded results for live archive validation.
