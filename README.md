@@ -6,7 +6,7 @@
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-yellow.svg)
 
-Validated Python simulation of lunar orbital dynamics from central gravity and J2 through high-degree GRAIL spherical harmonics. The code reads NASA PDS SHADR gravity products, evaluates fully normalized `Cnm/Snm` fields in the lunar body-fixed frame, and supports explicit rotation back to an inertial propagation frame.
+Validated Python simulation of lunar orbital dynamics from central gravity and J2 through high-degree GRAIL spherical harmonics. The code reads NASA PDS SHADR gravity products, evaluates fully normalized `Cnm/Snm` fields in the lunar body-fixed frame with a pole-safe analytical Cartesian gradient, and supports explicit rotation back to an inertial propagation frame.
 
 ## At a glance
 
@@ -14,7 +14,7 @@ Validated Python simulation of lunar orbital dynamics from central gravity and J
 flowchart LR
     A[GRAIL SHADR coefficients] --> B[4pi-normalized parser]
     B --> C[Body-fixed harmonic potential]
-    C --> D[Analytical gravity gradient]
+    C --> D[Pole-safe analytical gravity gradient]
     D --> E[Frame rotation]
     E --> F[Inertial propagation]
     G[J2 closed form] --> H[Secular-rate validation]
@@ -27,20 +27,33 @@ The repository deliberately keeps the low-degree J2 benchmark because it provide
 
 - central lunar gravity
 - closed-form J2 perturbation
-- geodesy 4π-normalized spherical harmonics
+- geodesy 4pi-normalized spherical harmonics
 - arbitrary `Cnm/Snm` degree and order truncation
 - NASA PDS SHADR parsing using the published fixed-column record layout
 - GRGM1200A metadata and download tooling
-- body-fixed harmonic acceleration
+- pole-safe body-fixed harmonic acceleration, including exact rotation-axis evaluation
 - body-fixed to inertial force transformation
 - optional SPICE frame transformations
 - terminal mean-radius surface event
 
-The evaluator is stress-tested through degree 1200. The SHADR reader is regression-tested with byte-faithful 244-byte header and 122-byte coefficient records matching the PDS specification, including arbitrary coefficient ordering, malformed-row rejection, and duplicate detection. The 88 MB GRGM1200A coefficient table remains an external NASA data product and is not copied into this repository.
+The evaluator is stress-tested through degree 1200, including equatorial, mid-latitude, near-pole, and exact north/south-axis evaluations. The longitudinal gravity term is evaluated with a direct recurrence for `Pbar_nm / cos(phi)` rather than dividing by `cos(phi)` or displacing a pole evaluation to an artificial nearby point. The SHADR reader is regression-tested with byte-faithful 244-byte header and 122-byte coefficient records matching the PDS specification, including arbitrary coefficient ordering, malformed-row rejection, and duplicate detection. The 88 MB GRGM1200A coefficient table remains an external NASA data product and is not copied into this repository.
 
 ## Validation
 
-The current automated suite contains 34 tests. It includes two independent checks that are particularly useful for the harmonic implementation:
+The current automated suite contains **65 tests**. The gravity-specific validation includes:
+
+- normalized `C20` acceleration versus an independent closed-form J2 implementation;
+- analytical Cartesian acceleration versus an independent Cartesian finite-difference gradient of the potential;
+- zonal, tesseral, and sectoral synthetic fields;
+- equatorial, mid-latitude, low-altitude, and higher-altitude locations;
+- very near both poles and exactly on both rotation-axis poles;
+- convergence to the same Cartesian pole field from multiple approach azimuths;
+- continuity while crossing a pole despite the longitude coordinate jump;
+- degree/order truncation equivalence;
+- finite normalized-function and acceleration evaluation through degree/order 1200;
+- body-fixed/inertial rotation consistency, including an exact-pole case.
+
+Two retained numerical checks are:
 
 | Check | Result |
 |---|---:|
@@ -50,11 +63,11 @@ The current automated suite contains 34 tests. It includes two independent check
 The original 40-orbit J2 regression remains unchanged:
 
 | Quantity | Analytical | Numerical | Relative difference |
-|---|---:|---:|---:|
+|---|---:|---:|
 | RAAN rate | -0.773273 deg/day | -0.773527 deg/day | 0.033% |
 | Periapsis-argument rate | 0.820180 deg/day | 0.817987 deg/day | 0.267% |
 
-See [`results/j2_validation.json`](results/j2_validation.json) and [`results/harmonic_validation.json`](results/harmonic_validation.json).
+See [`results/j2_validation.json`](results/j2_validation.json), [`results/harmonic_validation.json`](results/harmonic_validation.json), and [`docs/model.md`](docs/model.md) for the equations, pole treatment, conventions, references, and limitations.
 
 ## Quick start
 
@@ -88,7 +101,17 @@ python examples/grgm1200a_gravity.py \
   --position-km 1900 200 300
 ```
 
-The archived GRGM1200A metadata used by the code are GM `4902.80011526323 km^3/s^2`, reference radius `1738.0 km`, geodesy 4π normalization, and a DE430-defined lunar principal-axes body-fixed frame.
+The archived GRGM1200A metadata used by the code are GM `4902.80011526323 km^3/s^2`, reference radius `1738.0 km`, geodesy 4pi normalization, and a DE430-defined lunar principal-axes body-fixed frame.
+
+## High-degree timing
+
+A timing harness is provided for measuring acceleration synthesis without turning variable shared-runner timings into a CI pass/fail criterion:
+
+```bash
+python scripts/benchmark_harmonics.py --degree 1200 --repetitions 5
+```
+
+It can also benchmark an externally downloaded SHADR model with `--model`.
 
 ## Inertial propagation
 
@@ -144,7 +167,9 @@ lunar-astrodynamics-simulation/
 │   ├── grgm1200a_gravity.py
 │   ├── harmonic_validation.py
 │   └── j2_precession.py
-├── scripts/download_grgm1200a.py
+├── scripts/
+│   ├── benchmark_harmonics.py
+│   └── download_grgm1200a.py
 ├── src/lunar_astrodynamics/
 │   ├── analysis.py
 │   ├── constants.py
@@ -163,7 +188,7 @@ lunar-astrodynamics-simulation/
 
 ## What this repository does not claim
 
-This remains a research and validation implementation, not certified flight-dynamics software. The repository does not bundle NASA's coefficient file, lunar topography, automatic SPICE kernels, third-body gravity, solar radiation pressure, covariance propagation, or orbit-determination estimation.
+This remains a research and validation implementation, not certified flight-dynamics software. Degree/order 1200 is the current tested high-degree target; the direct normalized recursion is not presented as an arbitrary ultra-high-degree extended-range/Clenshaw implementation. The repository does not bundle NASA's coefficient file, lunar topography, automatic SPICE kernels, third-body gravity, solar radiation pressure, covariance propagation, or orbit-determination estimation.
 
 See [docs/model.md](docs/model.md) for the force model and [docs/reproducibility.md](docs/reproducibility.md) for exact checks.
 
