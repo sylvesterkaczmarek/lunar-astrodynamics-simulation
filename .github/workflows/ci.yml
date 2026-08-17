@@ -26,3 +26,6 @@ jobs:
       - name: Harmonic smoke example
         if: matrix.python-version == '3.12'
         run: python examples/harmonic_validation.py --output /tmp/harmonics.json
+      - name: Degree-1200 gravity benchmark smoke
+        if: matrix.python-version == '3.12'
+        run: python scripts/benchmark_harmonics.py --degree 1200 --repetitions 2
