@@ -21,6 +21,7 @@ from lunar_astrodynamics import (
     ThirdBodyGravity,
     propagate_with_acceleration,
     spice_ephemeris_from_utc,
+    spice_rotation_provider,
     state_from_elements,
     total_acceleration,
 )
@@ -34,7 +35,11 @@ def _load_kernels(kernel_dir: Path) -> None:
             "Install SPICE support first: python -m pip install -e .[spice]"
         ) from exc
 
-    required = (kernel_dir / "naif0012.tls", kernel_dir / "de440s.bsp")
+    required = (
+        kernel_dir / "naif0012.tls",
+        kernel_dir / "de440s.bsp",
+        kernel_dir / "pck00011.tpc",
+    )
     missing = [path for path in required if not path.exists()]
     if missing:
         names = ", ".join(str(path) for path in missing)
@@ -127,19 +132,33 @@ def main() -> None:
     )
     earth_position = ephemeris.position_provider("EARTH")
     sun_position = ephemeris.position_provider("SUN")
+    lunar_body_fixed_from_inertial = spice_rotation_provider(
+        "J2000",
+        "IAU_MOON",
+        et_offset_s=ephemeris.epoch_et_s,
+    )
 
-    lunar_gravity = CallableForce(
-        "lunar central+J2 gravity",
-        lambda _time_s, position_m: total_acceleration(
-            position_m,
+    def lunar_gravity_inertial(time_s: float, position_m: np.ndarray) -> np.ndarray:
+        rotation = lunar_body_fixed_from_inertial(time_s)
+        body_fixed_position = rotation @ position_m
+        body_fixed_acceleration = total_acceleration(
+            body_fixed_position,
             GRGM1200A_J2.mu_m3_s2,
             GRGM1200A_J2.reference_radius_m,
             GRGM1200A_J2.j2,
-        ),
+        )
+        return rotation.T @ body_fixed_acceleration
+
+    lunar_gravity = CallableForce(
+        "lunar central+J2 gravity",
+        lunar_gravity_inertial,
         metadata={
-            "type": "central plus J2",
+            "type": "central plus axisymmetric J2",
             "model": GRGM1200A_J2.name,
-            "note": "force-isolation example; replace this component with GRAIL gravity for higher-fidelity science runs",
+            "inertial_frame": "J2000",
+            "body_fixed_frame": "IAU_MOON",
+            "orientation_kernel": "pck00011.tpc",
+            "note": "force-isolation example; replace this component with GRAIL gravity and its compatible principal-axes frame for higher-fidelity science runs",
         },
     )
     earth = ThirdBodyGravity(
@@ -255,7 +274,8 @@ def main() -> None:
         },
         "interpretation": (
             "Differences are numerical consequences of the selected preliminary force model and spacecraft parameters. "
-            "This example uses lunar central+J2 gravity to isolate perturbations; it is not a mission-grade truth model."
+            "This example evaluates low-degree lunar J2 in the SPICE IAU_MOON frame and uses J2000 for relative dynamics. "
+            "Higher-fidelity lunar gravity should use GRAIL coefficients in their compatible principal-axes frame."
         ),
     }
 
