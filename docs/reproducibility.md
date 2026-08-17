@@ -20,6 +20,9 @@ python examples/frozen_orbit_search.py --quick \
   --map-csv /tmp/frozen_map.csv
 python examples/targeting_stationkeeping.py --quick \
   --output /tmp/targeting_stationkeeping.json
+python examples/gravity_fidelity.py --quick \
+  --output /tmp/gravity_fidelity.json \
+  --runtime-csv /tmp/gravity_fidelity.csv
 ```
 
 The terrain example is self-contained and compares a mean-radius collision model with a synthetic gridded surface containing a 6 km mountain. The nonsingular example includes an exact circular-equatorial state, for which classical RAAN is intentionally rejected, and a nearly circular polar J2 propagation analysed with eccentricity vectors and modified equinoctial elements.
@@ -27,6 +30,8 @@ The terrain example is self-contained and compares a mean-radius collision model
 The frozen-orbit quick example is also self-contained. It performs a deterministic low-degree J2 coarse-to-fine search and is intended to verify the search workflow and metric plumbing, not to serve as a high-degree lunar frozen-orbit truth result.
 
 The targeting/station-keeping quick example uses the same self-contained low-degree J2 context. It validates the complete workflow from finite-difference sensitivity through local correction and a threshold-triggered impulsive maintenance simulation. Its delta-v values are workflow regression outputs, not a flight operations budget.
+
+The gravity-fidelity quick example uses a deterministic synthetic degree-20 lunar-like coefficient field. It exercises acceleration convergence, trajectory convergence, tolerance selection and real timing without requiring an external gravity product. Its selected degrees are regression examples for that synthetic field and short horizon, not lunar mission recommendations.
 
 ## Stability-search reproducibility
 
@@ -96,6 +101,37 @@ Segmented station-keeping propagation evaluates the force model at absolute elap
 
 See `docs/targeting.md` for the numerical method, controller definition and limitations.
 
+## Gravity-fidelity reproducibility
+
+A convergence result is only meaningful together with the numerical context in which it was measured. Record:
+
+- gravity product name/version and coefficient normalization;
+- gravity reference radius and GM;
+- gravity body-fixed frame;
+- inertial frame, epoch and orientation-kernel provenance when a time-dependent rotation is used;
+- every tested `(degree, order)` pair;
+- the explicit reference `(degree, order)` pair;
+- the exact position samples and their times;
+- velocity samples when RTN acceleration decomposition is requested;
+- whether the position set came from an independently propagated reference trajectory or another sampling scheme;
+- acceleration benchmark repetition count and software/hardware environment for runtime comparisons;
+- initial Cartesian state for trajectory convergence;
+- propagation duration, sample count, integrator method, tolerances and maximum step;
+- additional force components applied identically across gravity truncations;
+- terrain product, terrain frame, prepared resolution and clearance-search resolution if terrain is used;
+- every `FidelityTolerance` field used for selection;
+- the complete per-truncation errors and runtimes, not only the selected degree.
+
+`AccelerationFidelityReport` and `TrajectoryFidelityReport` preserve the explicit reference and every tested truncation. `GravityFidelityStudy.write_runtime_csv(...)` places measured runtime beside acceleration and trajectory errors so the performance decision can be reconstructed.
+
+`select_lowest_harmonic_truncation(...)` selects only among tested degree/order pairs. It does not interpolate an untested degree and does not imply that the same truncation is sufficient for a different altitude, ground track, epoch, duration or accuracy requirement.
+
+When using `compare_force_model_ladder(...)`, additionally preserve each case name and complete `SearchDynamics.provenance()`, and identify the selected reference case. Third-body and SRP parameters/kernels are part of the fidelity definition rather than incidental settings.
+
+Runtime measurements use wall-clock timing and are machine/software dependent. Compare timings from the same execution environment when using them to justify a performance trade-off.
+
+See `docs/fidelity.md` for metric definitions, RTN conventions, selection policy and interpretation limits.
+
 ## Orbital-analysis conventions
 
 For reproducible stability studies, record the Cartesian reference frame, gravitational parameter, reference radius and the element convention used in analysis.
@@ -118,7 +154,7 @@ python scripts/download_grgm1200a.py
 
 The nominal SHADR table remains external to Git. Covariance-derived clone perturbations can be downloaded selectively with `scripts/download_grgm1200a_clones.py`.
 
-For a high-degree stability or targeting study, the SHADR model must be paired with an appropriate caller-loaded lunar body-fixed transformation. The APIs record the supplied frame and harmonic truncation but deliberately do not infer that an arbitrary lunar SPICE frame is compatible with the gravity solution.
+For a high-degree stability, targeting or fidelity study, the SHADR model must be paired with an appropriate caller-loaded lunar body-fixed transformation. The APIs record the supplied frame and harmonic truncation but deliberately do not infer that an arbitrary lunar SPICE frame is compatible with the gravity solution.
 
 ## External LOLA terrain data
 
@@ -212,7 +248,7 @@ The archive-level two-day SPICE validation performed on 17 August 2026 is stored
 
 A reproducible combined GRAIL/LOLA/perturbation run should record each frame transformation independently. The recommended Goddard terrain grid is `MOON_PA_DE421`, GRGM1200A is a DE430 gravity solution, and the low-degree force-isolation example uses `IAU_MOON`. These names are not interchangeable.
 
-For science propagation, search, targeting and station-keeping analysis, record:
+For science propagation, search, targeting, station-keeping and fidelity analysis, record:
 
 - SPICE kernel filenames and versions;
 - inertial frame;
@@ -221,6 +257,8 @@ For science propagation, search, targeting and station-keeping analysis, record:
 - UTC and numerical ET epoch;
 - SPICE aberration correction;
 - gravity product and truncation;
+- fidelity reference truncation and tested truncation ladder;
+- fidelity position/trajectory sample definition and tolerance policy;
 - terrain product and prepared resolution;
 - enabled third bodies and their mass parameters;
 - SRP mass, area, reflectivity coefficient and eclipse model when enabled;
@@ -280,6 +318,13 @@ Routine CI avoids large external GRGM1200A and LOLA products and avoids network-
 - two-body orbit-parameter targeting convergence;
 - explicit failure when a terrain-clearance target is requested without terrain;
 - no-burn, successful-burn and over-limit station-keeping cases;
-- end-to-end terrain-clearance, nonsingular-analysis, frozen-orbit-search and targeting/station-keeping smoke workflows.
+- pure-C20 harmonic omission error against the independent closed-form J2 acceleration;
+- independent order truncation using synthetic C22/S22 coefficients;
+- acceleration and trajectory tolerance-based truncation selection;
+- known central-only trajectory convergence represented in a higher-degree coefficient array;
+- terrain-clearance fidelity differences;
+- positive measured fidelity runtimes;
+- standard and arbitrary custom force-model ladder comparisons;
+- end-to-end terrain-clearance, nonsingular-analysis, frozen-orbit-search, targeting/station-keeping and gravity-fidelity smoke workflows.
 
 This keeps source-code verification deterministic while retaining separate scripts and recorded results for live archive validation.
