@@ -6,9 +6,9 @@
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-yellow.svg)
 
-Validated Python lunar-orbit simulation and preliminary mission-analysis tooling from central gravity and J2 through high-degree GRAIL spherical harmonics, gravity-field uncertainty ensembles, LOLA terrain clearance, ephemeris-driven Earth/Sun perturbations, and optional solar radiation pressure with lunar eclipse handling.
+Validated Python lunar-orbit simulation and preliminary mission-analysis tooling from central gravity and J2 through high-degree GRAIL spherical harmonics, gravity-field uncertainty ensembles, LOLA terrain clearance, ephemeris-driven Earth/Sun perturbations, optional solar radiation pressure with lunar eclipse handling, and nonsingular orbital stability analysis.
 
-The code keeps gravity, terrain, ephemerides, frames, uncertainty and perturbation forces explicit. Large NASA/NAIF datasets remain external and simulation provenance is exposed rather than hidden behind automatic model choices.
+The code keeps gravity, terrain, ephemerides, frames, uncertainty, perturbation forces and orbital-analysis conventions explicit. Large NASA/NAIF datasets remain external and simulation provenance is exposed rather than hidden behind automatic model choices.
 
 ## At a glance
 
@@ -19,8 +19,10 @@ flowchart LR
     S[SRP and lunar eclipse] --> F
     F --> P[Inertial propagation]
     U[Gravity uncertainty] --> P
+    P --> A[Nonsingular orbit analysis]
     L[LOLA terrain] --> C[Terrain clearance and impact]
     P --> C
+    C --> A
 ```
 
 ## Implemented capabilities
@@ -41,11 +43,16 @@ flowchart LR
 - deterministic SPICE epoch handling with kernel/frame/epoch provenance
 - optional cannonball solar-radiation pressure using configurable mass, area and reflectivity coefficient
 - finite apparent Sun/Moon disk eclipse model with full sunlight, umbra, annular and partial-shadow behavior
+- physical orbital vectors including eccentricity vector, angular momentum and orbital-plane normal
+- prograde modified equinoctial elements with direct Cartesian conversions
+- nonsingular trajectory histories for osculating apsides, eccentricity-vector, plane and apsidal evolution
+- secular-drift and detrended bounded-oscillation statistics for frozen-orbit studies
+- explicit separation of reference-radius altitude and optional terrain clearance in orbit analysis
 - external gravity, terrain and SPICE download/validation tooling
 
 ## Validation
 
-The automated suite contains **107 tests** and passes on Python 3.10, 3.12 and 3.13.
+The automated suite contains **124 tests** and passes on Python 3.10, 3.12 and 3.13.
 
 Gravity validation includes normalized `C20` versus an independent J2 implementation, Cartesian finite-difference gradients, zonal/tesseral/sectoral fields, equatorial and polar cases, pole-crossing continuity, degree/order truncation, degree-1200 finiteness, and body-fixed/inertial consistency.
 
@@ -54,6 +61,8 @@ Uncertainty validation covers SHADR uncertainty retention, seeded reproducibilit
 Terrain validation covers analytic interpolation fixtures, longitude wrapping, antimeridian continuity, poles, explicit frame mismatch rejection, terrain-impact roots, GMT/netCDF loading, PDS3 decoding, real LOLA reference values and an end-to-end terrain-impact example.
 
 Force validation covers exact differential third-body geometries, the distant-body inverse-cube limit, SPICE epoch and kernel provenance, one-AU SRP magnitude, inverse-square SRP scaling, full sunlight, total lunar umbra, annular eclipse, partial eclipse and continuous shadow transitions.
+
+Orbital-mathematics validation covers classical-element preservation, physical orbital vectors, direct Cartesian/MEE round trips across circular, near-circular, near-equatorial, polar, inclined and highly eccentric cases through 179 degrees inclination, explicit singular-angle rejection, exact circular-equatorial analysis, osculating apsides, terrain/reference-altitude separation and drift/oscillation statistics.
 
 Retained gravity checks are:
 
@@ -65,6 +74,7 @@ Retained gravity checks are:
 Scientific documentation:
 
 - [`docs/model.md`](docs/model.md)
+- [`docs/orbital_analysis.md`](docs/orbital_analysis.md)
 - [`docs/uncertainty.md`](docs/uncertainty.md)
 - [`docs/terrain.md`](docs/terrain.md)
 - [`docs/forces.md`](docs/forces.md)
@@ -83,9 +93,30 @@ python examples/j2_precession.py --orbits 40
 python examples/harmonic_validation.py
 python examples/gravity_uncertainty.py --samples 16 --seed 20260817 --duration-days 1
 python examples/terrain_clearance.py
+python examples/nonsingular_analysis.py --orbits 10
 ```
 
 Windows PowerShell users can activate the environment with `.venv\Scripts\Activate.ps1`.
+
+## Nonsingular orbital analysis
+
+Classical elements remain available through `ClassicalElements`, `state_from_elements(...)`, `elements_from_state(...)` and the legacy `element_history(...)`. The classical conversion deliberately raises when RAAN or argument of periapsis is undefined instead of assigning arbitrary angles.
+
+For stability and frozen-orbit work, use physical vector quantities and modified equinoctial elements:
+
+```python
+vectors = orbital_vectors_from_state(state, mu)
+mee = modified_equinoctial_from_state(state, mu)
+history = orbit_history(solution.t, solution.y, mu)
+```
+
+`OrbitalVectors` provides the eccentricity vector, specific angular momentum, plane normal, semimajor axis, semilatus rectum, eccentricity, inclination and orbital energy. `ModifiedEquinoctialElements` uses the prograde tangent convention `(p, f, g, h, k, L)`, which is regular for circular, prograde-equatorial and polar orbits and singular at the exact 180-degree retrograde-equatorial limit.
+
+`orbit_history(...)` reports osculating periselene/aposelene radii and altitudes, reference-radius altitude, eccentricity-vector evolution, orbital-plane evolution, apsidal direction where physically meaningful, MEE histories, and drift plus detrended oscillation statistics. If a terrain model and explicit terrain-frame transform are supplied, sampled terrain clearance is returned separately from reference-radius altitude.
+
+The CI example starts with an exact circular/equatorial state: classical conversion correctly reports that RAAN is undefined while MEE returns `f=g=h=k=0`. For a nearly circular `e=1e-7` lunar J2 case, the classical argument of periapsis spans hundreds of degrees over two orbits even though the nonsingular eccentricity vector and MEE components remain the appropriate stability variables.
+
+See [`docs/orbital_analysis.md`](docs/orbital_analysis.md).
 
 ## High-degree GRAIL gravity
 
@@ -209,6 +240,7 @@ lunar-astrodynamics-simulation/
 │   ├── forces.md
 │   ├── lola_pa_validation.md
 │   ├── model.md
+│   ├── orbital_analysis.md
 │   ├── reproducibility.md
 │   ├── terrain.md
 │   └── uncertainty.md
@@ -218,6 +250,7 @@ lunar-astrodynamics-simulation/
 │   ├── grgm1200a_gravity.py
 │   ├── harmonic_validation.py
 │   ├── j2_precession.py
+│   ├── nonsingular_analysis.py
 │   └── terrain_clearance.py
 ├── results/
 │   ├── force_model_spice_validation.json
@@ -249,6 +282,8 @@ lunar-astrodynamics-simulation/
 ## What this repository does not claim
 
 This is research and validation software, not certified flight-dynamics software.
+
+The prograde modified equinoctial convention does not cover the exact 180-degree retrograde-equatorial singularity; a complementary retrograde formulation is not yet implemented. The current `orbit_history(...)` stability product assumes a bound elliptic trajectory because it reports a finite aposelene. Classical elements remain intentionally unavailable where their defining angles do not exist.
 
 High-fidelity lunar runs still require appropriate high-degree gravity, compatible lunar orientation/frame kernels, terrain resolution, gravity uncertainty treatment and a force model selected for the required prediction horizon. Earth and Sun are point-mass third bodies here. The current model does not include lunar tides/time-variable gravity, Earth oblateness as an extended perturber, relativity, other planetary third bodies, Earth radiation pressure, lunar albedo/thermal radiation, maneuvers, thrust, mass depletion or navigation-estimation error.
 
