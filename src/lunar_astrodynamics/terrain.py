@@ -23,6 +23,7 @@ LOLA_MOON_PA_64_GRIDLINE_URL = "https://pgda.gsfc.nasa.gov/data/LOLA_PA/LDEM64_P
 LOLA_MOON_PA_64_PIXEL_URL = "https://pgda.gsfc.nasa.gov/data/LOLA_PA/LDEM64_PA_pixel_202405.grd"
 LOLA_PDS_LDEM4_IMG_URL = "https://imbrium.mit.edu/DATA/LOLA_GDR/CYLINDRICAL/IMG/LDEM_4.IMG"
 LOLA_PDS_LDEM4_LBL_URL = "https://imbrium.mit.edu/DATA/LOLA_GDR/CYLINDRICAL/IMG/LDEM_4.LBL"
+_LOLA_MOON_PA_GRID_KM_TO_M = 1000.0
 
 
 class TerrainShapeModel(Protocol):
@@ -385,18 +386,24 @@ def _normalize_global_coordinates(longitude_deg: FloatArray, latitude_deg: Float
 
 
 def load_lola_moon_pa_grd(path: str | Path, *, registration: str = "gridline", stride: int = 1) -> RegularLatLonTerrain:
-    """Load NASA PGDA's 2024 LOLA MOON_PA global GMT/netCDF shape grid."""
+    """Load NASA PGDA's 2024 LOLA MOON_PA global GMT/netCDF shape grid.
+
+    The archived GMT/netCDF ``z`` array stores elevation in kilometres above
+    the 1737.4 km reference sphere. The public terrain API always uses metres,
+    so the product-specific loader converts those samples to metres here.
+    """
     if stride < 1:
         raise ValueError("stride must be at least one")
-    lon, lat, elevation = _read_gmt_netcdf(path, int(stride))
-    lon, lat, elevation = _normalize_global_coordinates(lon, lat, elevation)
+    lon, lat, elevation_km = _read_gmt_netcdf(path, int(stride))
+    lon, lat, elevation_km = _normalize_global_coordinates(lon, lat, elevation_km)
     expected_spacing_deg = float(stride) / 64.0
     if not np.isclose(np.median(np.diff(lon)), expected_spacing_deg, rtol=0.0, atol=1e-8) or not np.isclose(np.median(np.diff(lat)), expected_spacing_deg, rtol=0.0, atol=1e-8):
         raise ValueError("LOLA MOON_PA loader expects the 64 pixels/degree global product")
     if registration == "gridline" and (not np.isclose(lon[0], 0.0) or not np.isclose(lon[-1], 360.0) or not np.isclose(lat[0], -90.0) or not np.isclose(lat[-1], 90.0)):
         raise ValueError("gridline LOLA product must retain 0/360 and -90/+90 boundaries")
+    elevation_m = elevation_km * _LOLA_MOON_PA_GRID_KM_TO_M
     source = LOLA_MOON_PA_64_GRIDLINE_URL if registration == "gridline" else LOLA_MOON_PA_64_PIXEL_URL
-    return RegularLatLonTerrain(lat, lon, elevation, LOLA_REFERENCE_RADIUS_M, f"LOLA MOON_PA 64 ppd {registration} shape grid", LOLA_MOON_PA_DE421_FRAME, registration, source)
+    return RegularLatLonTerrain(lat, lon, elevation_m, LOLA_REFERENCE_RADIUS_M, f"LOLA MOON_PA 64 ppd {registration} shape grid", LOLA_MOON_PA_DE421_FRAME, registration, source)
 
 
 def _pds_value(label: str, key: str) -> str:
