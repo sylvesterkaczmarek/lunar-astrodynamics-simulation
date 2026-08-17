@@ -76,6 +76,8 @@ class RegularLatLonTerrain:
                 raise ValueError("global gridline terrain must include -90 and +90 degrees")
             if not np.isclose(lon[0], 0.0, atol=1e-8) or not np.isclose(lon[-1], 360.0, atol=1e-8):
                 raise ValueError("global gridline terrain must include 0 and 360 degrees")
+            if not np.allclose(elevation[:, 0], elevation[:, -1], rtol=0.0, atol=1e-6):
+                raise ValueError("gridline 0 and 360 degree terrain boundary columns must match")
         lat.setflags(write=False)
         lon.setflags(write=False)
         elevation.setflags(write=False)
@@ -130,6 +132,8 @@ class RegularLatLonTerrain:
         latitude_deg = float(np.clip(latitude_deg, -90.0, 90.0))
         if np.isclose(abs(latitude_deg), 90.0, atol=1e-12):
             row = self.elevation_grid_m[-1] if latitude_deg > 0.0 else self.elevation_grid_m[0]
+            if self.registration == "gridline":
+                row = row[:-1]
             return float(np.mean(row))
         lat = self.latitude_deg
         if self.registration == "pixel" and latitude_deg < lat[0]:
@@ -215,8 +219,11 @@ def terrain_clearance_m(time_s: float, position_inertial_m: ArrayLike, terrain: 
 
 def terrain_location(time_s: float, position_inertial_m: ArrayLike, terrain: TerrainShapeModel, terrain_body_fixed_from_inertial: RotationProvider, *, terrain_frame: str) -> TerrainLocation:
     _validate_terrain_frame(terrain, terrain_frame)
+    position = np.asarray(position_inertial_m, dtype=float)
+    if position.shape != (3,) or not np.all(np.isfinite(position)):
+        raise ValueError("position must be a finite three-vector")
     rotation = validate_rotation_matrix(terrain_body_fixed_from_inertial(float(time_s)))
-    body_fixed = rotation @ np.asarray(position_inertial_m, dtype=float)
+    body_fixed = rotation @ position
     radius, latitude, longitude = _body_fixed_location(body_fixed)
     elevation = terrain.elevation_m(latitude, longitude)
     return TerrainLocation(float(np.rad2deg(latitude)), float(np.rad2deg(longitude) % 360.0), float(elevation), float(radius - terrain.reference_radius_m - elevation))
@@ -257,12 +264,17 @@ def analyze_terrain_clearance(solution: Any, terrain: TerrainShapeModel, terrain
         raise ValueError("search_samples must be at least three")
     if solution.sol is None:
         raise ValueError("solution must contain dense output")
-    start = float(solution.t[0])
-    finish = float(solution.t[-1])
+    dense_times = getattr(solution.sol, "ts", None)
+    if dense_times is None or len(dense_times) < 2:
+        start = float(solution.t[0])
+        finish = float(solution.t[-1])
+    else:
+        start = float(dense_times[0])
+        finish = float(dense_times[-1])
     if getattr(solution, "t_events", None) and len(solution.t_events[0]):
         finish = float(solution.t_events[0][0])
     scan_times = np.linspace(start, finish, int(search_samples))
-    clearances = np.array([_clearance_at_solution_time(solution, t, terrain, terrain_body_fixed_from_inertial, terrain_frame) for t in scan_times])
+    clearances = np.array([_clearance_at_solution_time(solution, t, terrain, terrain_body_fixed_from_inertial, terrain_frame) for t in scan_times], dtype=float)
     index = int(np.argmin(clearances))
     best_time = float(scan_times[index])
     best_clearance = float(clearances[index])
@@ -378,6 +390,9 @@ def load_lola_moon_pa_grd(path: str | Path, *, registration: str = "gridline", s
         raise ValueError("stride must be at least one")
     lon, lat, elevation = _read_gmt_netcdf(path, int(stride))
     lon, lat, elevation = _normalize_global_coordinates(lon, lat, elevation)
+    expected_spacing_deg = float(stride) / 64.0
+    if not np.isclose(np.median(np.diff(lon)), expected_spacing_deg, rtol=0.0, atol=1e-8) or not np.isclose(np.median(np.diff(lat)), expected_spacing_deg, rtol=0.0, atol=1e-8):
+        raise ValueError("LOLA MOON_PA loader expects the 64 pixels/degree global product")
     if registration == "gridline" and (not np.isclose(lon[0], 0.0) or not np.isclose(lon[-1], 360.0) or not np.isclose(lat[0], -90.0) or not np.isclose(lat[-1], 90.0)):
         raise ValueError("gridline LOLA product must retain 0/360 and -90/+90 boundaries")
     source = LOLA_MOON_PA_64_GRIDLINE_URL if registration == "gridline" else LOLA_MOON_PA_64_PIXEL_URL
