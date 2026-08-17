@@ -1,8 +1,8 @@
 """Quantify lunar-orbit sensitivity to gravity-field uncertainty.
 
 By default this example uses a small synthetic uncertainty-bearing gravity field
-so it runs without external data. For correlated GRGM1200A science studies,
-pass downloaded PDS clone files with --clones.
+so it runs without external data. For correlated GRGM1200A studies, provide the
+nominal SHADR model plus downloaded PDS clone perturbation files.
 """
 
 from __future__ import annotations
@@ -14,6 +14,7 @@ from pathlib import Path
 import numpy as np
 
 from lunar_astrodynamics import (
+    GRGM1200A,
     ClassicalElements,
     MOON_MEAN_RADIUS_M,
     PropagationSettings,
@@ -21,6 +22,7 @@ from lunar_astrodynamics import (
     constant_rate_z_rotation,
     load_grgm1200a_clone_ensemble,
     propagate_gravity_ensemble,
+    read_shadr,
     sample_independent_coefficient_uncertainty,
     state_from_elements,
 )
@@ -100,10 +102,15 @@ def main() -> None:
     parser.add_argument("--duration-days", type=float, default=1.0)
     parser.add_argument("--degree", type=int, default=4)
     parser.add_argument(
+        "--nominal",
+        type=Path,
+        help="Nominal GRGM1200A SHADR file, required when --clones is used",
+    )
+    parser.add_argument(
         "--clones",
         type=Path,
         nargs="*",
-        help="Optional downloaded PDS GRGM1200A clone files for correlated analysis",
+        help="Downloaded PDS GRGM1200A clone perturbation files",
     )
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
@@ -114,8 +121,20 @@ def main() -> None:
         parser.error("--degree must be non-negative")
 
     if args.clones:
-        models = load_grgm1200a_clone_ensemble(args.clones, max_degree=args.degree)
-        method = "PDS covariance-derived GRGM1200A clone ensemble"
+        if args.nominal is None:
+            parser.error("--nominal is required when --clones is supplied")
+        nominal = read_shadr(
+            args.nominal,
+            max_degree=args.degree,
+            name=args.nominal.name,
+            frame=GRGM1200A.body_fixed_frame,
+        )
+        models = load_grgm1200a_clone_ensemble(
+            nominal,
+            args.clones,
+            max_degree=args.degree,
+        )
+        method = "nominal GRGM1200A plus PDS covariance-derived clone perturbations"
         seed = None
     else:
         nominal = _synthetic_uncertain_gravity()
@@ -131,6 +150,7 @@ def main() -> None:
         )
         seed = args.seed
 
+    orbit_mu = models[0].mu_m3_s2
     initial_elements = ClassicalElements(
         semi_major_axis_m=MOON_MEAN_RADIUS_M + 100_000.0,
         eccentricity=0.01,
@@ -139,7 +159,7 @@ def main() -> None:
         argument_of_periapsis_rad=np.deg2rad(45.0),
         true_anomaly_rad=0.0,
     )
-    initial_state = state_from_elements(initial_elements, MU_MOON_M3_S2)
+    initial_state = state_from_elements(initial_elements, orbit_mu)
     rotation = constant_rate_z_rotation(2.0 * np.pi / LUNAR_SIDEREAL_PERIOD_S)
     duration_s = args.duration_days * 86400.0
 
