@@ -63,7 +63,7 @@ Two retained numerical checks are:
 The original 40-orbit J2 regression remains unchanged:
 
 | Quantity | Analytical | Numerical | Relative difference |
-|---|---:|---:|
+|---|---:|---:|---:|
 | RAAN rate | -0.773273 deg/day | -0.773527 deg/day | 0.033% |
 | Periapsis-argument rate | 0.820180 deg/day | 0.817987 deg/day | 0.267% |
 
