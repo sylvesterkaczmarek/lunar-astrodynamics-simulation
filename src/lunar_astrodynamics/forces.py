@@ -307,7 +307,16 @@ class SolarRadiationPressure:
         distance = float(np.linalg.norm(sun_to_spacecraft))
         if distance == 0.0:
             raise ValueError("Sun-spacecraft geometry is singular")
-        illumination = self.illumination_fraction(time_s, spacecraft)
+        illumination = (
+            lunar_eclipse_illumination_fraction(
+                spacecraft,
+                sun,
+                moon_radius_m=self.moon_radius_m,
+                sun_radius_m=self.sun_radius_m,
+            )
+            if self.include_lunar_shadow
+            else 1.0
+        )
         pressure = self.pressure_1_au_n_m2 * (self.astronomical_unit_m / distance) ** 2
         magnitude = (
             illumination
