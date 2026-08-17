@@ -7,7 +7,7 @@ The repository contains two lunar gravity implementations:
 
 The spherical-harmonic evaluator is designed for body-fixed lunar gravity synthesis through degree/order 1200. Its Cartesian acceleration is explicitly pole-safe and its SHADR model object preserves archived coefficient-uncertainty fields for separate uncertainty analysis.
 
-Lunar gravity is now one component of the wider propagation model. Ephemeris-driven Earth/Sun gravity and solar radiation pressure are documented separately in [`forces.md`](forces.md).
+Lunar gravity is now one component of the wider propagation model. Ephemeris-driven Earth/Sun gravity and solar radiation pressure are documented separately in [`forces.md`](forces.md). Orbit sensitivity, targeting and idealised impulsive station-keeping analysis are documented in [`targeting.md`](targeting.md).
 
 ## Authoritative conventions
 
@@ -149,6 +149,8 @@ Terrain tests cover bilinear interpolation, longitude wrapping, antimeridian con
 
 Perturbation-force tests independently cover the differential third-body equation, its distant-body limiting behavior, SPICE epoch and provenance handling, SRP magnitude/distance scaling, and full/partial lunar eclipse geometry. See [`forces.md`](forces.md).
 
+Targeting tests first use analytically tractable dynamics: an exact zero-acceleration state-transition matrix, straight-line terminal targeting, and two-body apsis derivatives. They then verify local lunar targeting, finite-difference step consistency, explicit failure for rank-deficient correction, terrain-target input validation, and successful/over-limit impulsive station-keeping behavior. See [`targeting.md`](targeting.md).
+
 ## Numerical complexity
 
 Direct harmonic synthesis is `O(N^2)` and maintains triangular arrays for `Pbar_nm`, its latitude derivative, and `Qbar_nm`. `scripts/benchmark_harmonics.py` reports timing without imposing a variable CI speed threshold.
@@ -158,6 +160,8 @@ Ensemble propagation scales with the number of supplied gravity realizations and
 Terrain clearance evaluation is dominated by frame transformation and local bilinear grid interpolation. `propagate_with_terrain(...)` also retains dense ODE output and performs a post-propagation clearance scan with local scalar refinement.
 
 Earth/Sun and SRP components make SPICE/geometry calls at ODE force-evaluation times. They are composable with low-degree or high-degree lunar gravity; for high-degree GRAIL propagation, gravity synthesis usually remains the more expensive force contribution.
+
+Finite-difference state or parameter sensitivities require positive and negative propagations at multiple perturbation sizes for each design-variable column. The current half/base/double consistency sweep is therefore substantially more expensive than one nominal trajectory. Local differential correction compounds this cost across iterations and line-search trials.
 
 ## Mascons and surface handling
 
@@ -185,8 +189,11 @@ See [`terrain.md`](terrain.md) for product provenance, interpolation rules and r
 - The recommended global PA terrain product is DE421 while GRGM1200A is DE430, so separate explicit frame transformations are required.
 - Earth and Sun are point-mass third bodies; extended-body Earth gravity is not included.
 - SRP uses an effective cannonball area/reflectivity model and a spherical-Moon finite-disk eclipse model.
-- Lunar tides/time-variable gravity, other planetary perturbations, relativity, Earth radiation pressure, lunar albedo/thermal radiation, maneuvers and detailed spacecraft attitude/optical models are not included.
-- Spacecraft state covariance propagation and orbit determination are not included.
+- Lunar tides/time-variable gravity, other planetary perturbations, relativity, Earth radiation pressure and lunar albedo/thermal radiation are not included.
+- The current maneuver model is instantaneous impulsive preliminary analysis only; finite thrust, burn duration, attitude/slew constraints, execution errors, propulsion constraints and mass depletion are not modeled.
+- Finite-difference sensitivities are local numerical derivatives and can be unreliable near discontinuities, event topology changes or poor perturbation-size regimes despite the implemented step-sweep diagnostic.
+- Differential correction is a local solver and is not a global trajectory optimizer.
+- Spacecraft state covariance propagation, orbit determination and navigation-error modeling are not included.
 - High-degree synthesis is CPU/NumPy based and is not certified flight-dynamics software.
 
 These limitations keep the simulation from being mistaken for a complete flight-dynamics truth model.

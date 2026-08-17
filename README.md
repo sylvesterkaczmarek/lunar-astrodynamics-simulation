@@ -6,9 +6,9 @@
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-yellow.svg)
 
-Validated Python lunar-orbit simulation and preliminary mission-analysis tooling from central gravity and J2 through high-degree GRAIL spherical harmonics, gravity-field uncertainty ensembles, LOLA terrain clearance, ephemeris-driven Earth/Sun perturbations, optional solar radiation pressure with lunar eclipse handling, nonsingular orbital analysis, and automated low-lunar-orbit stability/frozen-orbit search.
+Validated Python lunar-orbit simulation and preliminary mission-analysis tooling from central gravity and J2 through high-degree GRAIL spherical harmonics, gravity-field uncertainty ensembles, LOLA terrain clearance, ephemeris-driven Earth/Sun perturbations, optional solar radiation pressure with lunar eclipse handling, nonsingular orbital analysis, automated low-lunar-orbit stability/frozen-orbit search, local targeting and preliminary impulsive station-keeping analysis.
 
-The code keeps gravity, terrain, ephemerides, frames, uncertainty, perturbation forces, orbital-analysis conventions, search definitions and ranking criteria explicit. Large NASA/NAIF datasets remain external and simulation provenance is exposed rather than hidden behind automatic model choices.
+The code keeps gravity, terrain, ephemerides, frames, uncertainty, perturbation forces, orbital-analysis conventions, search definitions, numerical sensitivity settings, correction diagnostics and control thresholds explicit. Large NASA/NAIF datasets remain external and simulation provenance is exposed rather than hidden behind automatic model choices.
 
 ## At a glance
 
@@ -26,6 +26,8 @@ flowchart LR
     A --> Q[Stability and frozen-orbit search]
     U --> Q
     C --> Q
+    Q --> T[Targeting and sensitivity]
+    T --> K[Impulsive station-keeping estimate]
 ```
 
 ## Implemented capabilities
@@ -58,11 +60,17 @@ flowchart LR
 - uncertainty-aware candidate evaluation through supplied gravity realizations
 - terrain-clearance constraints when an explicit LOLA-derived terrain model is supplied
 - structured JSON/CSV search output and auditable 2-D stability-map generation
+- central finite-difference Jacobians with half/base/double step-size consistency diagnostics
+- numerical Cartesian state-transition matrices for arbitrary composable force models
+- propagated initial-orbit-parameter sensitivity for apsides, eccentricity-vector drift, altitude and terrain clearance
+- scaled damped least-squares differential correction with line search, rank/conditioning checks and explicit non-convergence results
+- local targeting of periselene, aposelene, eccentricity-vector drift, sampled periapsis location and terrain clearance
+- threshold-triggered impulsive station-keeping estimates with per-manoeuvre and total delta-v accounting
 - external gravity, terrain and SPICE download/validation tooling
 
 ## Validation
 
-The automated suite contains **134 tests** and passes on Python 3.10, 3.12 and 3.13.
+The automated suite contains **144 tests** and passes on Python 3.10, 3.12 and 3.13.
 
 Gravity validation includes normalized `C20` versus an independent J2 implementation, Cartesian finite-difference gradients, zonal/tesseral/sectoral fields, equatorial and polar cases, pole-crossing continuity, degree/order truncation, degree-1200 finiteness, and body-fixed/inertial consistency.
 
@@ -76,6 +84,8 @@ Orbital-mathematics validation covers classical-element preservation, physical o
 
 Stability-search validation covers two-body invariants, frozen metrics independent of survival, impact/lifetime handling, physical deduplication of circular/equatorial classical parameter combinations, deterministic threaded execution, uncertainty summaries, terrain constraints, coarse-to-fine refinement, stability-map reduction, harmonic-degree provenance, structured JSON/CSV export and surface-safe default ranges.
 
+Targeting validation covers an analytically exact zero-acceleration state-transition matrix, finite-difference step consistency in two-body motion, an analytically solvable terminal-state correction, explicit zero-rank corrector failure, two-body apsis sensitivities against closed-form derivatives, two-body orbital-target convergence, explicit terrain-target failure without terrain, and successful/over-limit station-keeping cases.
+
 Retained gravity checks are:
 
 | Check | Result |
@@ -88,6 +98,7 @@ Scientific documentation:
 - [`docs/model.md`](docs/model.md)
 - [`docs/orbital_analysis.md`](docs/orbital_analysis.md)
 - [`docs/frozen_orbit_search.md`](docs/frozen_orbit_search.md)
+- [`docs/targeting.md`](docs/targeting.md)
 - [`docs/uncertainty.md`](docs/uncertainty.md)
 - [`docs/terrain.md`](docs/terrain.md)
 - [`docs/forces.md`](docs/forces.md)
@@ -108,6 +119,7 @@ python examples/gravity_uncertainty.py --samples 16 --seed 20260817 --duration-d
 python examples/terrain_clearance.py
 python examples/nonsingular_analysis.py --orbits 10
 python examples/frozen_orbit_search.py --quick
+python examples/targeting_stationkeeping.py --quick
 ```
 
 Windows PowerShell users can activate the environment with `.venv\Scripts\Activate.ps1`.
@@ -176,6 +188,41 @@ python examples/frozen_orbit_search.py
 The self-contained example uses low-degree J2 as a workflow/screening demonstration. It can also load an external SHADR gravity field with a caller-supplied SPICE lunar body-fixed frame and harmonic degree. It deliberately does not guess that an arbitrary lunar frame is compatible with GRGM1200A.
 
 See [`docs/frozen_orbit_search.md`](docs/frozen_orbit_search.md).
+
+## Sensitivity, targeting and station-keeping
+
+The targeting layer is designed to take a promising search candidate and answer three preliminary mission-design questions: how sensitive is it, can it be locally corrected toward explicit constraints, and what does a simple threshold-based impulsive maintenance policy cost?
+
+A Cartesian numerical STM is available through:
+
+```python
+stm = finite_difference_state_transition(initial_state, duration_s, dynamics)
+```
+
+`orbit_parameter_sensitivity(...)` provides the corresponding derivative workflow for initial orbit parameters and propagated analysis quantities. Every derivative column is evaluated at half, nominal and double perturbation size, and the disagreement is stored so step-size sensitivity is visible rather than hidden.
+
+Local orbit targeting uses `target_orbit_parameters(...)`. Supported target quantities include final osculating periselene/aposelene altitude, an eccentricity-vector-drift upper bound, sampled body-fixed periapsis latitude/longitude and minimum terrain clearance. The corrector reports its Jacobian rank/condition number, derivative stability, line-search decisions, residual history and an explicit `converged` flag with a failure reason.
+
+The station-keeping estimate is deliberately simple:
+
+```python
+maintained = simulate_impulsive_stationkeeping(
+    initial_state,
+    duration_s,
+    dynamics,
+    StationKeepingPolicy(
+        check_interval_s=6 * 3600.0,
+        minimum_periselene_altitude_m=80_000.0,
+        maximum_semi_major_axis_deviation_m=2_000.0,
+    ),
+)
+```
+
+At each check epoch it evaluates the osculating orbit, applies configured threshold triggers, and if needed solves for an instantaneous RTN velocity correction toward target osculating apsides. It records each manoeuvre time, trigger, inertial and RTN delta-v, pre/post apsides, corrector diagnostics, total delta-v and maximum individual delta-v. Ephemeris-driven force models retain absolute elapsed time across propagation segments.
+
+The deterministic CI example uses low-degree J2 and an explicit 0.75 m/s transverse velocity error. Over 0.5 day, the uncontrolled case reaches a minimum osculating periselene of about **83.51 km**. The simple maintained case protects it to about **86.06 km** using four impulses totalling about **1.3503 m/s**, with a maximum single impulse of about **0.7500 m/s**. The controlled peak-to-peak periselene span is not smaller in that example because impulsive corrections themselves introduce discrete jumps. These numbers demonstrate the workflow only and are not a flight station-keeping budget.
+
+See [`docs/targeting.md`](docs/targeting.md).
 
 ## Nonsingular orbital analysis
 
@@ -311,6 +358,7 @@ lunar-astrodynamics-simulation/
 │   ├── model.md
 │   ├── orbital_analysis.md
 │   ├── reproducibility.md
+│   ├── targeting.md
 │   ├── terrain.md
 │   └── uncertainty.md
 ├── examples/
@@ -321,6 +369,7 @@ lunar-astrodynamics-simulation/
 │   ├── harmonic_validation.py
 │   ├── j2_precession.py
 │   ├── nonsingular_analysis.py
+│   ├── targeting_stationkeeping.py
 │   └── terrain_clearance.py
 ├── results/
 │   ├── force_model_spice_validation.json
@@ -346,6 +395,7 @@ lunar-astrodynamics-simulation/
 │   ├── propagation.py
 │   ├── search_defaults.py
 │   ├── stability.py
+│   ├── targeting.py
 │   ├── terrain.py
 │   └── uncertainty.py
 └── tests/
@@ -357,15 +407,19 @@ This is research and validation software, not certified flight-dynamics software
 
 A top-ranked search result is a numerical candidate under the stated model, epoch, duration, grid, refinement, constraints and ranking policy. It is not automatically a flight-certified frozen orbit, a guarantee of stationkeeping-free operation, or proof of long-term stability. Short propagation horizons can miss long-period instability and coarse grids can miss narrow stable regions. Promising candidates should be re-propagated for much longer periods at appropriate high gravity/force-model fidelity and through relevant uncertainty ensembles.
 
+Finite-difference sensitivity is a local numerical approximation whose reliability depends on perturbation size, integration tolerance, model smoothness and distance from events or active constraints. The repository records half/base/double step diagnostics but does not claim that this replaces independent sensitivity verification. The local differential corrector can fail because of ill-conditioning, local insensitivity, step-size sensitivity, impacts or nonlinear basin limits, and such failures are returned explicitly.
+
+The station-keeping simulator uses instantaneous ideal impulses at fixed threshold-check epochs. It does not model orbit-determination error, navigation covariance, maneuver execution error, finite burn duration, thrust/attitude limits, minimum impulse bit, maneuver windows, communications/operations constraints, missed burns, propulsion duty cycles or mass depletion. Its maneuver counts and delta-v totals are preliminary comparative estimates rather than operational budgets.
+
 The prograde modified equinoctial convention does not cover the exact 180-degree retrograde-equatorial singularity; a complementary retrograde formulation is not yet implemented. The current `orbit_history(...)` stability product assumes a bound elliptic trajectory because it reports a finite aposelene. Classical elements remain intentionally unavailable where their defining angles do not exist.
 
-High-fidelity lunar runs still require appropriate high-degree gravity, compatible lunar orientation/frame kernels, terrain resolution, gravity uncertainty treatment and a force model selected for the required prediction horizon. Earth and Sun are point-mass third bodies here. The current model does not include lunar tides/time-variable gravity, Earth oblateness as an extended perturber, relativity, other planetary third bodies, Earth radiation pressure, lunar albedo/thermal radiation, maneuvers, thrust, mass depletion or navigation-estimation error.
+High-fidelity lunar runs still require appropriate high-degree gravity, compatible lunar orientation/frame kernels, terrain resolution, gravity uncertainty treatment and a force model selected for the required prediction horizon. Earth and Sun are point-mass third bodies here. The current model does not include lunar tides/time-variable gravity, Earth oblateness as an extended perturber, relativity, other planetary third bodies, Earth radiation pressure, lunar albedo/thermal radiation or finite-thrust dynamics.
 
 SRP is a configurable cannonball model. It does not model spacecraft attitude, separate optical surfaces, articulation, self-shadowing or thermal reradiation. Lunar eclipse uses a spherical Moon and finite apparent solar disk; LOLA limb topography and solar limb darkening are excluded.
 
 The package does not construct the complete GRGM1200A covariance matrix internally. Terrain uncertainty, state covariance propagation and orbit determination are also not yet included.
 
-The repository does not bundle NASA gravity/terrain products or NAIF kernels. Kernel coverage, kernel provenance, frame selection, epoch, integration settings, search space, ranking policy and constraints remain caller-controlled parts of the numerical model.
+The repository does not bundle NASA gravity/terrain products or NAIF kernels. Kernel coverage, kernel provenance, frame selection, epoch, integration settings, search space, ranking policy, target definition, finite-difference settings and station-keeping thresholds remain caller-controlled parts of the numerical model.
 
 ## Cite this repository
 
