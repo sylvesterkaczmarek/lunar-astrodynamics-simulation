@@ -41,6 +41,9 @@ jobs:
       - name: Targeting and station-keeping smoke example
         if: matrix.python-version == '3.12'
         run: python examples/targeting_stationkeeping.py --quick --output /tmp/targeting_stationkeeping.json
+      - name: Gravity fidelity smoke example
+        if: matrix.python-version == '3.12'
+        run: python examples/gravity_fidelity.py --quick --output /tmp/gravity_fidelity.json --runtime-csv /tmp/gravity_fidelity.csv
       - name: Degree-1200 gravity benchmark smoke
         if: matrix.python-version == '3.12'
         run: python scripts/benchmark_harmonics.py --degree 1200 --repetitions 2
