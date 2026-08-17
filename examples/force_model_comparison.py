@@ -14,6 +14,7 @@ from lunar_astrodynamics import (
     MOON_MEAN_RADIUS_M,
     SUN_GM_DE440_M3_S2,
     CallableForce,
+    ClassicalElements,
     CompositeForceModel,
     PropagationSettings,
     SolarRadiationPressure,
@@ -171,15 +172,15 @@ def main() -> None:
         ),
     }
 
-    initial_state = state_from_elements(
+    initial_elements = ClassicalElements(
         semi_major_axis_m=MOON_MEAN_RADIUS_M + 100_000.0,
         eccentricity=0.01,
         inclination_rad=np.deg2rad(90.0),
         raan_rad=np.deg2rad(20.0),
         argument_of_periapsis_rad=np.deg2rad(30.0),
         true_anomaly_rad=0.0,
-        mu_m3_s2=GRGM1200A_J2.mu_m3_s2,
     )
+    initial_state = state_from_elements(initial_elements, GRGM1200A_J2.mu_m3_s2)
     duration_s = args.duration_days * 86400.0
     sample_times = np.linspace(0.0, duration_s, args.samples)
     settings = PropagationSettings(
@@ -213,6 +214,16 @@ def main() -> None:
     result = {
         "epoch": ephemeris.provenance(),
         "duration_days": args.duration_days,
+        "initial_elements": {
+            "semi_major_axis_m": initial_elements.semi_major_axis_m,
+            "eccentricity": initial_elements.eccentricity,
+            "inclination_deg": float(np.rad2deg(initial_elements.inclination_rad)),
+            "raan_deg": float(np.rad2deg(initial_elements.raan_rad)),
+            "argument_of_periapsis_deg": float(
+                np.rad2deg(initial_elements.argument_of_periapsis_rad)
+            ),
+            "true_anomaly_deg": float(np.rad2deg(initial_elements.true_anomaly_rad)),
+        },
         "initial_state_m_m_s": [float(value) for value in initial_state],
         "spacecraft": {
             "mass_kg": args.spacecraft_mass_kg,
@@ -224,7 +235,9 @@ def main() -> None:
                 "force_model": model.provenance(),
                 "trajectory": _solution_metrics(solutions[name]),
                 "difference_from_lunar_gravity_only": (
-                    None if name == "lunar_gravity_only" else _difference_metrics(baseline, solutions[name])
+                    None
+                    if name == "lunar_gravity_only"
+                    else _difference_metrics(baseline, solutions[name])
                 ),
             }
             for name, model in models.items()
@@ -234,7 +247,10 @@ def main() -> None:
             "maximum_fraction": float(np.max(full_illumination)),
             "full_shadow_sample_fraction": float(np.mean(full_illumination <= 1e-12)),
             "partial_shadow_sample_fraction": float(
-                np.mean((full_illumination > 1e-12) & (full_illumination < 1.0 - 1e-12))
+                np.mean(
+                    (full_illumination > 1e-12)
+                    & (full_illumination < 1.0 - 1e-12)
+                )
             ),
         },
         "interpretation": (
