@@ -32,6 +32,12 @@ jobs:
       - name: Terrain clearance smoke example
         if: matrix.python-version == '3.12'
         run: python examples/terrain_clearance.py --output /tmp/terrain_clearance.json
+      - name: Live LOLA MOON_PA grid validation
+        if: matrix.python-version == '3.12' && github.event_name == 'push' && github.ref == 'refs/heads/codex/lola-pa-live-validation'
+        run: |
+          python -m pip install -e .[terrain]
+          python scripts/download_lola_pa_shape.py --registration gridline --output /tmp/LDEM64_PA_gridline_202405.grd
+          python scripts/validate_lola_pa_reference.py /tmp/LDEM64_PA_gridline_202405.grd --stride 64 --output /tmp/lola_pa_reference.json
       - name: Degree-1200 gravity benchmark smoke
         if: matrix.python-version == '3.12'
         run: python scripts/benchmark_harmonics.py --degree 1200 --repetitions 2
