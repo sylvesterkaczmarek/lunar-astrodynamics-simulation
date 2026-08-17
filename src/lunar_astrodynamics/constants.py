@@ -48,9 +48,12 @@ SUN_GM_DE440_M3_S2 = 1.32712440041279419e20
 EARTH_GM_DE440_M3_S2 = 3.98600435507e14
 MOON_GM_DE440_M3_S2 = 4.902800e12
 
-# IAU 2012 exact astronomical unit and IAU 2015 nominal solar radius.
+# IAU 2012 exact astronomical unit and IAU 2015 nominal radii. The terrestrial
+# value is the nominal zero-tide equatorial radius recommended by IAU 2015
+# Resolution B3 and is used only for apparent-disk visibility geometry here.
 ASTRONOMICAL_UNIT_M = 149_597_870_700.0
 SUN_NOMINAL_RADIUS_M = 695_700_000.0
+EARTH_NOMINAL_EQUATORIAL_RADIUS_M = 6_378_100.0
 MOON_MEAN_RADIUS_M = 1_737_400.0
 
 # Representative mean direct solar momentum flux at one astronomical unit.
