@@ -130,16 +130,16 @@ Uncertainty handling is separate from deterministic force evaluation. `Spherical
 
 Two modes are supported:
 
-- covariance-derived GRGM1200A clone fields supplied from the official PDS archive;
+- covariance-derived GRGM1200A clone coefficient perturbations supplied from the official PDS archive and added to a compatible nominal GRGM1200A model;
 - explicitly acknowledged independent Gaussian coefficient perturbations based on archived sigma fields.
 
-The independent mode requires `assume_independent=True` because coefficient uncertainties do not contain off-diagonal covariance. For correlated GRGM1200A studies, covariance-derived clone fields are preferred. See [`uncertainty.md`](uncertainty.md).
+The clone files are deviations from the nominal solution rather than standalone lunar gravity models. `read_grgm1200a_clone(...)` therefore returns a `GravityCoefficientPerturbation`, and a separate application step constructs each complete gravity realization. The independent mode requires `assume_independent=True` because coefficient uncertainties do not contain off-diagonal covariance. For correlated GRGM1200A studies, nominal-plus-clone realizations are preferred. See [`uncertainty.md`](uncertainty.md).
 
 ## Validation strategy
 
 The test suite covers central gravity, independent C20/J2 agreement, Cartesian finite-difference gradients, zonal/tesseral/sectoral terms, equatorial and polar geometry, exact-axis limits, pole crossings, degree/order truncation, degree-1200 finiteness, and inertial/body-fixed rotation consistency.
 
-Uncertainty tests additionally cover SHADR sigma retention, validation and truncation, seeded diagonal sampling, mandatory opt-in to independence, clone archive URL mapping, coefficient-only clone loading, incomplete-clone rejection, percentile summaries, impact fractions, and end-to-end propagation through multiple gravity realizations.
+Uncertainty tests additionally cover SHADR sigma retention, validation and truncation, seeded diagonal sampling, mandatory opt-in to independence, clone archive URL mapping, coefficient-only clone-perturbation loading, incomplete-clone rejection, application of clone deltas to a nominal field, multi-clone realization loading, percentile summaries, impact fractions, and end-to-end propagation through multiple gravity realizations.
 
 ## Numerical complexity
 
@@ -158,7 +158,7 @@ The gravity reference radius is not a physical surface. Orbit termination still 
 - Degree/order 1200 is the current tested high-degree target; this is not an arbitrary ultra-high-degree scaled-Clenshaw implementation.
 - No claim is made for spherical-harmonic convergence below a model's applicable exterior region or Brillouin sphere.
 - The package does not construct the complete GRGM1200A covariance matrix internally.
-- Correlated gravity uncertainty is represented by externally supplied covariance-derived clone realizations.
+- Correlated gravity uncertainty is represented by covariance-derived PDS clone perturbations applied to a compatible nominal GRGM1200A model.
 - Diagonal coefficient sampling omits correlations and requires explicit acknowledgement.
 - The nominal GRGM1200A and clone datasets are not bundled.
 - SPICE kernels and compatible lunar principal-axes frames remain caller supplied.
