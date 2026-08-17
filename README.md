@@ -19,14 +19,17 @@ flowchart LR
     E --> F[Inertial propagation]
     B --> U[Archived coefficient uncertainties]
     U --> V[Explicit diagonal sensitivity draws]
-    K[PDS covariance-derived clone fields] --> W[Gravity ensemble]
-    V --> W
-    W --> X[Orbit metric percentiles]
+    N[Nominal GRGM1200A] --> W[Apply clone perturbations]
+    K[PDS covariance-derived clone deltas] --> W
+    W --> X[Correlated gravity ensemble]
+    V --> Y[Gravity ensemble]
+    X --> Z[Orbit metric percentiles]
+    Y --> Z
     G[J2 closed form] --> H[Secular-rate validation]
     B --> I[C20 versus J2 validation]
 ```
 
-The repository deliberately keeps the low-degree J2 benchmark because it provides an independent analytical check on the numerical machinery. The spherical-harmonic layer adds longitude-dependent tesseral and sectoral gravity terms, including the high-degree gravity signatures associated with lunar mascons. Gravity-field uncertainty is handled as an ensemble problem, with correlated PDS clone realizations kept distinct from an explicitly acknowledged independent-sigma approximation.
+The low-degree J2 benchmark provides an independent analytical check on the numerical machinery. The spherical-harmonic layer adds longitude-dependent tesseral and sectoral terms, including the gravity signatures associated with lunar mascons. Gravity-field uncertainty is handled as an ensemble problem. Covariance-derived PDS clone **perturbations** are added to the nominal GRGM1200A coefficients, while independent-sigma sampling remains a separately named, explicitly acknowledged approximation.
 
 ## Implemented models
 
@@ -37,20 +40,22 @@ The repository deliberately keeps the low-degree J2 benchmark because it provide
 - NASA PDS SHADR parsing using the published fixed-column record layout
 - preservation of SHADR `C`/`S` coefficient uncertainty fields and GM uncertainty
 - GRGM1200A metadata and download tooling
-- official GRGM1200A clone URL mapping, loading, and selected-file download tooling
+- official GRGM1200A clone URL mapping and selected-file download tooling
+- clone files represented as coefficient perturbations rather than standalone gravity models
+- application of clone perturbations to a compatible nominal GRGM1200A model
 - explicit reproducible diagonal coefficient perturbation for sensitivity studies
-- correlated gravity-realization ensemble propagation using PDS clone fields supplied by the user
+- trajectory ensemble propagation across complete gravity realizations
 - percentile summaries for altitude, osculating apsides, eccentricity, lifetime, and impact fraction
 - pole-safe body-fixed harmonic acceleration, including exact rotation-axis evaluation
 - body-fixed to inertial force transformation
 - optional SPICE frame transformations
 - terminal mean-radius surface event
 
-The evaluator is stress-tested through degree 1200, including equatorial, mid-latitude, near-pole, and exact north/south-axis evaluations. The longitudinal gravity term is evaluated with a direct recurrence for `Pbar_nm / cos(phi)` rather than dividing by `cos(phi)` or displacing a pole evaluation to an artificial nearby point. The SHADR reader is regression-tested with byte-faithful 244-byte header and 122-byte coefficient records matching the PDS specification, including retention of coefficient uncertainties. The 88 MB nominal GRGM1200A coefficient table and the much larger external uncertainty datasets remain NASA data products and are not copied into this repository.
+The evaluator is stress-tested through degree 1200, including equatorial, mid-latitude, near-pole, and exact north/south-axis evaluations. The longitudinal gravity term is evaluated with a direct recurrence for `Pbar_nm / cos(phi)` rather than dividing by `cos(phi)` or displacing a pole evaluation to an artificial nearby point. The SHADR reader is regression-tested with byte-faithful 244-byte header and 122-byte coefficient records matching the PDS specification, including retention of coefficient uncertainties. The nominal GRGM1200A table and the external covariance/clone products remain NASA data products and are not copied into this repository.
 
 ## Validation
 
-The current automated suite contains **75 tests**. The gravity-specific validation includes:
+The current automated suite contains **76 tests**. The gravity-specific validation includes:
 
 - normalized `C20` acceleration versus an independent closed-form J2 implementation;
 - analytical Cartesian acceleration versus an independent Cartesian finite-difference gradient of the potential;
@@ -66,8 +71,10 @@ The current automated suite contains **75 tests**. The gravity-specific validati
 - uncertainty-array validation and truncation;
 - seeded reproducibility of diagonal sensitivity draws;
 - mandatory explicit opt-in before independent coefficient sampling;
-- GRGM1200A clone archive URL grouping and coefficient-only clone parsing;
-- rejection of incomplete clone realizations;
+- GRGM1200A clone archive URL grouping;
+- coefficient-only clone perturbation parsing and rejection of incomplete clone files;
+- application of clone deltas to a compatible nominal field;
+- loading multiple external clone perturbations into complete gravity realizations;
 - ensemble percentile and impact-fraction calculations;
 - end-to-end propagation of one initial orbit through multiple gravity realizations.
 
@@ -75,7 +82,7 @@ Two retained numerical checks are:
 
 | Check | Result |
 |---|---:|
-| Normalized `C20` acceleration versus closed-form J2 | `1.78e-16` relative difference |
+| Normalized `C20` acceleration versus closed-form J2 | `1.83e-16` relative difference |
 | Tesseral analytical acceleration versus finite-difference potential gradient | `9.86e-10` relative difference |
 
 The original 40-orbit J2 regression remains unchanged:
@@ -127,13 +134,21 @@ The archived GRGM1200A metadata used by the code are GM `4902.80011526323 km^3/s
 `read_shadr(...)` retains the uncertainty fields distributed with a SHADR gravity product:
 
 ```python
-model = read_shadr("data/gggrx_1200a_sha.tab", max_degree=120)
+from lunar_astrodynamics import GRGM1200A, read_shadr
+
+model = read_shadr(
+    "data/gggrx_1200a_sha.tab",
+    max_degree=120,
+    frame=GRGM1200A.body_fixed_frame,
+)
 sigma_c20, sigma_s20 = model.coefficient_uncertainty(2, 0)
 ```
 
 Those coefficient uncertainties do not contain cross-covariances. The library therefore refuses independent coefficient perturbation unless the approximation is acknowledged explicitly:
 
 ```python
+from lunar_astrodynamics import sample_independent_coefficient_uncertainty
+
 realizations = sample_independent_coefficient_uncertainty(
     model,
     seed=1234,
@@ -142,23 +157,34 @@ realizations = sample_independent_coefficient_uncertainty(
 )
 ```
 
-For correlated GRGM1200A gravity uncertainty, use the covariance-derived clone realizations archived by NASA PDS. Download only the clones required for the study:
+For correlated GRGM1200A gravity uncertainty, use the covariance-derived clone perturbations archived by NASA PDS. Download only the files required for the study:
 
 ```bash
 python scripts/download_grgm1200a_clones.py 1 2 3 4 5
 ```
 
-Then load and propagate them as an ensemble:
+Clone coefficients are deviations from the nominal GRGM1200A solution. They must be added to the nominal coefficients before propagation. The library enforces that distinction:
 
 ```python
 from pathlib import Path
 from lunar_astrodynamics import (
+    GRGM1200A,
     load_grgm1200a_clone_ensemble,
     propagate_gravity_ensemble,
+    read_shadr,
 )
 
+nominal = read_shadr(
+    "data/gggrx_1200a_sha.tab",
+    max_degree=120,
+    frame=GRGM1200A.body_fixed_frame,
+)
 paths = sorted(Path("data/grgm1200a_clones").glob("*_sha.tab"))
-models = load_grgm1200a_clone_ensemble(paths, max_degree=120)
+models = load_grgm1200a_clone_ensemble(
+    nominal,
+    paths,
+    max_degree=120,
+)
 
 result = propagate_gravity_ensemble(
     initial_state,
@@ -173,6 +199,17 @@ print(result.impact_fraction)
 ```
 
 The default summary reports 5th, 50th, and 95th percentiles. See [`docs/uncertainty.md`](docs/uncertainty.md) for the statistical interpretation and limitations.
+
+The end-to-end example can use either the self-contained diagonal demonstration or external correlated clone perturbations:
+
+```bash
+python examples/gravity_uncertainty.py \
+  --nominal data/gggrx_1200a_sha.tab \
+  --degree 120 \
+  --duration-days 1 \
+  --clones data/grgm1200a_clones/gggrx_1200a_clone0001_sha.tab \
+           data/grgm1200a_clones/gggrx_1200a_clone0002_sha.tab
+```
 
 ## High-degree timing
 
@@ -263,7 +300,9 @@ lunar-astrodynamics-simulation/
 
 ## What this repository does not claim
 
-This remains a research and validation implementation, not certified flight-dynamics software. Degree/order 1200 is the current tested high-degree target; the direct normalized recursion is not presented as an arbitrary ultra-high-degree extended-range/Clenshaw implementation. The package supports empirical propagation across supplied covariance-derived clone fields and an explicitly diagonal coefficient-sigma approximation, but it does not construct or propagate the complete GRGM1200A covariance matrix internally. The repository does not bundle NASA's large gravity or clone datasets, lunar topography, automatic SPICE kernels, third-body gravity, solar radiation pressure, state covariance propagation, or orbit-determination estimation.
+This remains a research and validation implementation, not certified flight-dynamics software. Degree/order 1200 is the current tested high-degree target; the direct normalized recursion is not presented as an arbitrary ultra-high-degree extended-range/Clenshaw implementation. The package can propagate empirical ensembles built from supplied covariance-derived GRGM1200A clone perturbations and can perform an explicitly diagonal coefficient-sigma approximation, but it does not construct or propagate the complete GRGM1200A covariance matrix internally. Gravity uncertainty here also does not include spacecraft state uncertainty, terrain uncertainty, third-body model uncertainty, solar radiation pressure uncertainty, or orbit-determination uncertainty.
+
+The repository does not bundle NASA's large gravity or clone datasets, lunar topography, automatic SPICE kernels, third-body gravity, solar radiation pressure, state covariance propagation, or orbit-determination estimation.
 
 See [docs/model.md](docs/model.md) for the force model, [docs/uncertainty.md](docs/uncertainty.md) for gravity-field uncertainty, and [docs/reproducibility.md](docs/reproducibility.md) for exact checks.
 
