@@ -48,7 +48,7 @@ The large GRGM1200A and LOLA source datasets remain external NASA products and a
 
 ## Validation
 
-The current automated suite contains **88 tests** and passes on Python 3.10, 3.12 and 3.13.
+The current automated suite contains **90 tests** and passes on Python 3.10, 3.12 and 3.13.
 
 Gravity validation includes normalized `C20` versus an independent J2 implementation, Cartesian finite-difference gradients, zonal/tesseral/sectoral fields, equatorial and polar cases, pole-crossing continuity, degree/order truncation, degree-1200 finiteness, and body-fixed/inertial consistency.
 
