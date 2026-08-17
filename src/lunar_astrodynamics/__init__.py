@@ -1,11 +1,16 @@
-"""Validated lunar astrodynamics models from J2 through GRAIL harmonics."""
+"""Validated lunar astrodynamics models from GRAIL gravity through perturbation forces."""
 
 from .analysis import ElementHistory, element_history, linear_rate
 from .constants import (
+    ASTRONOMICAL_UNIT_M,
+    EARTH_GM_DE440_M3_S2,
     GRGM1200A,
     GRGM1200A_J2,
     MOON_GM_DE440_M3_S2,
     MOON_MEAN_RADIUS_M,
+    SOLAR_RADIATION_PRESSURE_1_AU_N_M2,
+    SUN_GM_DE440_M3_S2,
+    SUN_NOMINAL_RADIUS_M,
     GravityProduct,
     LunarJ2Model,
 )
@@ -17,6 +22,24 @@ from .elements import (
     mean_motion_rad_s,
     orbital_period_s,
     state_from_elements,
+)
+from .ephemeris import (
+    SpiceEphemeris,
+    SpiceKernelRecord,
+    SpicePositionProvider,
+    loaded_spice_kernels,
+    spice_ephemeris_from_et,
+    spice_ephemeris_from_utc,
+)
+from .forces import (
+    CallableForce,
+    CompositeForceModel,
+    ForceComponent,
+    SolarRadiationPressure,
+    ThirdBodyGravity,
+    apparent_disk_illumination_fraction,
+    lunar_eclipse_illumination_fraction,
+    third_body_acceleration,
 )
 from .frames import (
     RotationProvider,
@@ -78,9 +101,14 @@ from .uncertainty import (
 )
 
 __all__ = [
+    "ASTRONOMICAL_UNIT_M",
+    "CallableForce",
     "ClassicalElements",
+    "CompositeForceModel",
+    "EARTH_GM_DE440_M3_S2",
     "ElementHistory",
     "EnsembleUncertaintyResult",
+    "ForceComponent",
     "GRGM1200A",
     "GRGM1200A_CLONE_COUNT",
     "GRGM1200A_CLONE_EXPECTED_SIZE_BYTES",
@@ -100,13 +128,22 @@ __all__ = [
     "PropagationSettings",
     "RegularLatLonTerrain",
     "RotationProvider",
+    "SOLAR_RADIATION_PRESSURE_1_AU_N_M2",
+    "SUN_GM_DE440_M3_S2",
+    "SUN_NOMINAL_RADIUS_M",
+    "SolarRadiationPressure",
+    "SpiceEphemeris",
+    "SpiceKernelRecord",
+    "SpicePositionProvider",
     "SphericalHarmonicModel",
     "TerrainClearanceReport",
     "TerrainLocation",
     "TerrainPropagationResult",
     "TerrainShapeModel",
+    "ThirdBodyGravity",
     "analytical_j2_secular_rates",
     "analyze_terrain_clearance",
+    "apparent_disk_illumination_fraction",
     "apply_coefficient_perturbation",
     "central_acceleration",
     "constant_rate_z_rotation",
@@ -123,6 +160,8 @@ __all__ = [
     "load_lola_moon_pa_grd",
     "load_lola_pds_global_gdr",
     "load_terrain_npz",
+    "loaded_spice_kernels",
+    "lunar_eclipse_illumination_fraction",
     "make_mean_radius_surface_event",
     "make_surface_event",
     "make_terrain_impact_event",
@@ -138,11 +177,14 @@ __all__ = [
     "rotation_z",
     "sample_independent_coefficient_uncertainty",
     "save_terrain_npz",
+    "spice_ephemeris_from_et",
+    "spice_ephemeris_from_utc",
     "spice_rotation_provider",
     "state_from_elements",
     "summarize_ensemble",
     "terrain_clearance_m",
     "terrain_location",
+    "third_body_acceleration",
     "total_acceleration",
     "validate_rotation_matrix",
 ]

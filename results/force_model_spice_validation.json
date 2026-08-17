@@ -1,0 +1,97 @@
+{
+  "validated_utc": "2026-08-17T20:14:36Z",
+  "epoch": {
+    "epoch_utc": "2026-08-17T00:00:00",
+    "epoch_et_s": 840196869.1829052,
+    "inertial_frame": "J2000",
+    "observer": "MOON",
+    "aberration_correction": "NONE"
+  },
+  "kernels": [
+    {
+      "filename": "naif0012.tls",
+      "kind": "TEXT",
+      "downloaded_size_bytes": 5257
+    },
+    {
+      "filename": "de440s.bsp",
+      "kind": "SPK",
+      "downloaded_size_bytes": 32726016
+    },
+    {
+      "filename": "pck00011.tpc",
+      "kind": "TEXT",
+      "downloaded_size_bytes": 131226
+    }
+  ],
+  "duration_days": 2.0,
+  "output_samples": 289,
+  "initial_orbit": {
+    "semi_major_axis_m": 1837400.0,
+    "eccentricity": 0.01,
+    "inclination_deg": 90.0,
+    "raan_deg": 20.0,
+    "argument_of_periapsis_deg": 30.0,
+    "true_anomaly_deg": 0.0
+  },
+  "lunar_gravity": {
+    "model": "GRGM1200A low-degree J2 approximation",
+    "body_fixed_frame": "IAU_MOON",
+    "orientation_kernel": "pck00011.tpc"
+  },
+  "spacecraft_srp": {
+    "mass_kg": 250.0,
+    "effective_illuminated_area_m2": 4.0,
+    "reflectivity_coefficient": 1.4,
+    "shadow_model": "finite apparent Sun/Moon disk overlap"
+  },
+  "models": {
+    "lunar_gravity_only": {
+      "minimum_reference_altitude_m": 81626.00000000023,
+      "maximum_reference_altitude_m": 118162.06738148653,
+      "final_reference_altitude_m": 117476.13549694559,
+      "minimum_osculating_eccentricity": 0.009743589071884561,
+      "maximum_osculating_eccentricity": 0.010139109424523871,
+      "final_osculating_eccentricity": 0.009836899466284176,
+      "impacted_mean_radius_sphere": false
+    },
+    "lunar_gravity_plus_earth": {
+      "minimum_reference_altitude_m": 81594.32486684201,
+      "maximum_reference_altitude_m": 118147.52770382352,
+      "final_reference_altitude_m": 117440.44196775928,
+      "final_position_difference_from_gravity_only_m": 2235.1020034238113,
+      "rms_position_difference_from_gravity_only_m": 1137.901885254507,
+      "final_velocity_difference_from_gravity_only_m_s": 1.918610564995466,
+      "impacted_mean_radius_sphere": false
+    },
+    "lunar_gravity_plus_earth_plus_sun": {
+      "minimum_reference_altitude_m": 81594.18442180124,
+      "maximum_reference_altitude_m": 118147.67998075439,
+      "final_reference_altitude_m": 117440.62261079531,
+      "final_position_difference_from_gravity_only_m": 2242.9580269934704,
+      "rms_position_difference_from_gravity_only_m": 1142.2923381297594,
+      "final_velocity_difference_from_gravity_only_m_s": 1.9239147709494906,
+      "impacted_mean_radius_sphere": false
+    },
+    "lunar_gravity_plus_earth_plus_sun_plus_srp": {
+      "minimum_reference_altitude_m": 81601.95218195277,
+      "maximum_reference_altitude_m": 118138.1781993662,
+      "final_reference_altitude_m": 117433.12016613106,
+      "final_position_difference_from_gravity_only_m": 2222.2871168208876,
+      "rms_position_difference_from_gravity_only_m": 1146.065701346226,
+      "final_velocity_difference_from_gravity_only_m_s": 1.9162169755920775,
+      "impacted_mean_radius_sphere": false
+    }
+  },
+  "srp_illumination": {
+    "minimum_fraction": 0.0,
+    "maximum_fraction": 1.0,
+    "full_shadow_sample_fraction": 0.3217993079584775,
+    "partial_shadow_sample_fraction": 0.006920415224913495
+  },
+  "test_suite_at_validation": {
+    "tests": 107,
+    "python_versions": ["3.10", "3.12", "3.13"]
+  },
+  "interpretation": "This is a reproducible force-isolation validation using low-degree lunar J2 in IAU_MOON plus DE440 Earth/Sun ephemerides. It is not a mission-grade truth model. Higher-fidelity lunar gravity should use GRAIL coefficients and a compatible principal-axes frame."
+}

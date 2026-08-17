@@ -7,6 +7,8 @@ The repository contains two lunar gravity implementations:
 
 The spherical-harmonic evaluator is designed for body-fixed lunar gravity synthesis through degree/order 1200. Its Cartesian acceleration is explicitly pole-safe and its SHADR model object preserves archived coefficient-uncertainty fields for separate uncertainty analysis.
 
+Lunar gravity is now one component of the wider propagation model. Ephemeris-driven Earth/Sun gravity and solar radiation pressure are documented separately in [`forces.md`](forces.md).
+
 ## Authoritative conventions
 
 The implementation follows the NASA/PDS SHADR convention used by archived GRAIL products: positive `GM/r` potential, east-positive longitude, geodesy 4pi normalized coefficients, and no Condon-Shortley phase.
@@ -124,6 +126,8 @@ r_inertial -> body-fixed rotation -> harmonic gravity -> inverse rotation -> a_i
 
 The rotation provider is explicit. A GRGM1200A study should use and record a SPICE lunar principal-axes frame compatible with the gravity solution.
 
+The low-degree force-comparison example follows the same principle: its J2 acceleration is evaluated in SPICE `IAU_MOON` and rotated back to J2000 rather than assuming that the J2000 z-axis is the lunar symmetry axis.
+
 ## Gravity-field uncertainty
 
 Uncertainty handling is separate from deterministic force evaluation. `SphericalHarmonicModel` can carry SHADR uncertainty metadata, while `uncertainty.py` creates or loads alternative gravity realizations.
@@ -137,11 +141,13 @@ The clone files are deviations from the nominal solution rather than standalone 
 
 ## Validation strategy
 
-The test suite covers central gravity, independent C20/J2 agreement, Cartesian finite-difference gradients, zonal/tesseral/sectoral terms, equatorial and polar geometry, exact-axis limits, pole crossings, degree/order truncation, degree-1200 finiteness, and inertial/body-fixed rotation consistency.
+The gravity test suite covers central gravity, independent C20/J2 agreement, Cartesian finite-difference gradients, zonal/tesseral/sectoral terms, equatorial and polar geometry, exact-axis limits, pole crossings, degree/order truncation, degree-1200 finiteness, and inertial/body-fixed rotation consistency.
 
-Uncertainty tests additionally cover SHADR sigma retention, validation and truncation, seeded diagonal sampling, mandatory opt-in to independence, clone archive URL mapping, coefficient-only clone-perturbation loading, incomplete-clone rejection, application of clone deltas to a nominal field, multi-clone realization loading, percentile summaries, impact fractions, and end-to-end propagation through multiple gravity realizations.
+Uncertainty tests additionally cover SHADR sigma retention, seeded diagonal sampling, mandatory opt-in to independence, clone-perturbation loading, incomplete-clone rejection, application of clone deltas to a nominal field, multi-clone realization loading, percentile summaries, impact fractions, and end-to-end ensemble propagation.
 
-Terrain tests cover bilinear interpolation, longitude wrapping, antimeridian continuity, exact-pole behavior, pixel-registration polar caps, explicit frame mismatch rejection, terrain-impact root finding and geometry reporting, GMT/netCDF loading, PDS3 IMG/label decoding, prepared-grid metadata round trips, and selected reference elevations independently observed from the official NASA/PDS LDEM_4 product. See [`terrain.md`](terrain.md).
+Terrain tests cover bilinear interpolation, longitude wrapping, antimeridian continuity, exact-pole behavior, pixel-registration polar caps, explicit frame mismatch rejection, terrain-impact root finding and geometry reporting, GMT/netCDF loading, PDS3 IMG/label decoding, prepared-grid metadata round trips, and selected real LOLA reference elevations. See [`terrain.md`](terrain.md).
+
+Perturbation-force tests independently cover the differential third-body equation, its distant-body limiting behavior, SPICE epoch and provenance handling, SRP magnitude/distance scaling, and full/partial lunar eclipse geometry. See [`forces.md`](forces.md).
 
 ## Numerical complexity
 
@@ -150,6 +156,8 @@ Direct harmonic synthesis is `O(N^2)` and maintains triangular arrays for `Pbar_
 Ensemble propagation scales with the number of supplied gravity realizations and currently executes members serially for deterministic, transparent behavior.
 
 Terrain clearance evaluation is dominated by frame transformation and local bilinear grid interpolation. `propagate_with_terrain(...)` also retains dense ODE output and performs a post-propagation clearance scan with local scalar refinement.
+
+Earth/Sun and SRP components make SPICE/geometry calls at ODE force-evaluation times. They are composable with low-degree or high-degree lunar gravity; for high-degree GRAIL propagation, gravity synthesis usually remains the more expensive force contribution.
 
 ## Mascons and surface handling
 
@@ -172,11 +180,13 @@ See [`terrain.md`](terrain.md) for product provenance, interpolation rules and r
 - Correlated gravity uncertainty is represented by covariance-derived PDS clone perturbations applied to a compatible nominal GRGM1200A model.
 - Diagonal coefficient sampling omits correlations and requires explicit acknowledgement.
 - The nominal GRGM1200A, clone and LOLA terrain datasets are not bundled.
-- SPICE kernels and compatible lunar principal-axes frames remain caller supplied.
+- SPICE kernels and compatible lunar frames remain caller supplied and kernel coverage must span the requested propagation interval.
 - Terrain is represented as a radial gridded shape with bilinear interpolation; sub-grid relief and terrain uncertainty are not modeled.
 - The recommended global PA terrain product is DE421 while GRGM1200A is DE430, so separate explicit frame transformations are required.
-- Earth/Sun third-body gravity, solar radiation pressure, and time-variable tides are not yet included.
+- Earth and Sun are point-mass third bodies; extended-body Earth gravity is not included.
+- SRP uses an effective cannonball area/reflectivity model and a spherical-Moon finite-disk eclipse model.
+- Lunar tides/time-variable gravity, other planetary perturbations, relativity, Earth radiation pressure, lunar albedo/thermal radiation, maneuvers and detailed spacecraft attitude/optical models are not included.
 - Spacecraft state covariance propagation and orbit determination are not included.
 - High-degree synthesis is CPU/NumPy based and is not certified flight-dynamics software.
 
-These exclusions keep the simulation from being mistaken for a complete flight-clearance or mission uncertainty system.
+These limitations keep the simulation from being mistaken for a complete flight-dynamics truth model.
