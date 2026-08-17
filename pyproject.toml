@@ -19,6 +19,11 @@ dependencies = [
 dev = ["pytest>=8,<10"]
 spice = ["spiceypy>=6,<8"]
 terrain = ["netCDF4>=1.6,<2"]
+validation = [
+  "spiceypy>=6,<8",
+  "pyshtools>=4.11,<5",
+  "mpmath>=1.3,<2",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
