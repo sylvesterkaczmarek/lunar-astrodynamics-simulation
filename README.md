@@ -6,93 +6,64 @@
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-yellow.svg)
 
-Validated Python simulation of lunar orbital dynamics from central gravity and J2 through high-degree GRAIL spherical harmonics. The code reads NASA PDS SHADR gravity products, evaluates fully normalized `Cnm/Snm` fields in the lunar body-fixed frame with a pole-safe analytical Cartesian gradient, preserves archived gravity-coefficient uncertainty metadata, and supports trajectory ensembles across alternative gravity realizations.
+Validated Python simulation of lunar orbital dynamics from central gravity and J2 through high-degree GRAIL spherical harmonics, gravity-field uncertainty ensembles, and terrain-aware low-lunar-orbit clearance. The code reads NASA PDS gravity products, supports external LOLA shape grids, keeps lunar frame realizations explicit, and reports local terrain clearance and impact geometry instead of relying only on a mean-radius sphere.
 
 ## At a glance
 
 ```mermaid
 flowchart LR
-    A[GRAIL SHADR coefficients] --> B[4pi-normalized parser]
-    B --> C[Body-fixed harmonic potential]
-    C --> D[Pole-safe analytical gravity gradient]
-    D --> E[Frame rotation]
-    E --> F[Inertial propagation]
-    B --> U[Archived coefficient uncertainties]
-    U --> V[Explicit diagonal sensitivity draws]
-    N[Nominal GRGM1200A] --> W[Apply clone perturbations]
-    K[PDS covariance-derived clone deltas] --> W
-    W --> X[Correlated gravity ensemble]
-    V --> Y[Gravity ensemble]
-    X --> Z[Orbit metric percentiles]
-    Y --> Z
-    G[J2 closed form] --> H[Secular-rate validation]
-    B --> I[C20 versus J2 validation]
+    A[GRAIL SHADR coefficients] --> B[4pi-normalized gravity]
+    B --> C[Pole-safe body-fixed acceleration]
+    C --> D[Inertial propagation]
+    B --> U[Gravity uncertainty]
+    U --> V[Clone or diagonal ensembles]
+    L[LOLA terrain grid] --> T[Explicit terrain-frame transform]
+    T --> Q[Local surface radius]
+    D --> Q
+    Q --> R[Terrain clearance and impact]
 ```
 
-The low-degree J2 benchmark provides an independent analytical check on the numerical machinery. The spherical-harmonic layer adds longitude-dependent tesseral and sectoral terms, including the gravity signatures associated with lunar mascons. Gravity-field uncertainty is handled as an ensemble problem. Covariance-derived PDS clone **perturbations** are added to the nominal GRGM1200A coefficients, while independent-sigma sampling remains a separately named, explicitly acknowledged approximation.
+The low-degree J2 benchmark provides an independent analytical check. The high-degree layer adds longitude-dependent tesseral and sectoral gravity, including the signatures associated with lunar mascons. Gravity uncertainty and terrain geometry are separate model components with explicit provenance rather than hidden assumptions.
 
-## Implemented models
+## Implemented capabilities
 
-- central lunar gravity
-- closed-form J2 perturbation
-- geodesy 4pi-normalized spherical harmonics
-- arbitrary `Cnm/Snm` degree and order truncation
-- NASA PDS SHADR parsing using the published fixed-column record layout
-- preservation of SHADR `C`/`S` coefficient uncertainty fields and GM uncertainty
-- GRGM1200A metadata and download tooling
-- official GRGM1200A clone URL mapping and selected-file download tooling
-- clone files represented as coefficient perturbations rather than standalone gravity models
-- application of clone perturbations to a compatible nominal GRGM1200A model
-- explicit reproducible diagonal coefficient perturbation for sensitivity studies
-- trajectory ensemble propagation across complete gravity realizations
-- percentile summaries for altitude, osculating apsides, eccentricity, lifetime, and impact fraction
-- pole-safe body-fixed harmonic acceleration, including exact rotation-axis evaluation
-- body-fixed to inertial force transformation
-- optional SPICE frame transformations
-- terminal mean-radius surface event
+- central lunar gravity and closed-form J2 perturbation
+- geodesy 4pi-normalized spherical harmonics with arbitrary degree/order truncation
+- NASA PDS SHADR parsing with retained coefficient and GM uncertainty fields
+- pole-safe high-degree gravity evaluation through degree/order 1200
+- explicit body-fixed to inertial transformations and optional SPICE support
+- covariance-derived GRGM1200A clone perturbation ensembles
+- reproducible diagonal coefficient-sigma sensitivity sampling
+- orbit uncertainty percentiles for altitude, osculating apsides, eccentricity, lifetime and impact
+- global regular latitude/longitude terrain model abstraction
+- NASA Goddard 2024 LOLA `MOON_PA_DE421` GMT/netCDF grid loading
+- standard global LOLA PDS3 cylindrical IMG/label loading
+- periodic longitude and antimeridian-safe terrain interpolation
+- explicit exact-pole handling for gridline and pixel registration
+- terrain-aware clearance, minimum-clearance location and impact geometry
+- explicitly named mean-radius spherical collision fallback
+- external data download and preparation tooling
 
-The evaluator is stress-tested through degree 1200, including equatorial, mid-latitude, near-pole, and exact north/south-axis evaluations. The longitudinal gravity term is evaluated with a direct recurrence for `Pbar_nm / cos(phi)` rather than dividing by `cos(phi)` or displacing a pole evaluation to an artificial nearby point. The SHADR reader is regression-tested with byte-faithful 244-byte header and 122-byte coefficient records matching the PDS specification, including retention of coefficient uncertainties. The nominal GRGM1200A table and the external covariance/clone products remain NASA data products and are not copied into this repository.
+The large GRGM1200A and LOLA source datasets remain external NASA products and are not copied into this repository.
 
 ## Validation
 
-The current automated suite contains **76 tests**. The gravity-specific validation includes:
+The current automated suite contains **88 tests** and passes on Python 3.10, 3.12 and 3.13.
 
-- normalized `C20` acceleration versus an independent closed-form J2 implementation;
-- analytical Cartesian acceleration versus an independent Cartesian finite-difference gradient of the potential;
-- zonal, tesseral, and sectoral synthetic fields;
-- equatorial, mid-latitude, low-altitude, and higher-altitude locations;
-- very near both poles and exactly on both rotation-axis poles;
-- convergence to the same Cartesian pole field from multiple approach azimuths;
-- continuity while crossing a pole despite the longitude coordinate jump;
-- degree/order truncation equivalence;
-- finite normalized-function and acceleration evaluation through degree/order 1200;
-- body-fixed/inertial rotation consistency, including an exact-pole case;
-- SHADR coefficient and GM uncertainty retention;
-- uncertainty-array validation and truncation;
-- seeded reproducibility of diagonal sensitivity draws;
-- mandatory explicit opt-in before independent coefficient sampling;
-- GRGM1200A clone archive URL grouping;
-- coefficient-only clone perturbation parsing and rejection of incomplete clone files;
-- application of clone deltas to a compatible nominal field;
-- loading multiple external clone perturbations into complete gravity realizations;
-- ensemble percentile and impact-fraction calculations;
-- end-to-end propagation of one initial orbit through multiple gravity realizations.
+Gravity validation includes normalized `C20` versus an independent J2 implementation, Cartesian finite-difference gradients, zonal/tesseral/sectoral fields, equatorial and polar cases, pole-crossing continuity, degree/order truncation, degree-1200 finiteness, and body-fixed/inertial consistency.
 
-Two retained numerical checks are:
+Uncertainty validation covers SHADR uncertainty retention, seeded reproducibility, explicit independent-sampling opt-in, covariance-derived clone perturbation semantics, percentile calculations and end-to-end gravity ensembles.
+
+Terrain validation covers analytic interpolation fixtures, longitude wrapping, `0/360` continuity, the `+/-180 degree` boundary, exact poles, pixel polar caps, explicit frame mismatch rejection, terrain-impact roots and geometry, GMT/netCDF loading, PDS3 decoding, selected official LOLA reference elevations, prepared-grid metadata round trips and an end-to-end terrain-impact example.
+
+Retained gravity checks are:
 
 | Check | Result |
 |---|---:|
 | Normalized `C20` acceleration versus closed-form J2 | `1.83e-16` relative difference |
 | Tesseral analytical acceleration versus finite-difference potential gradient | `9.86e-10` relative difference |
 
-The original 40-orbit J2 regression remains unchanged:
-
-| Quantity | Analytical | Numerical | Relative difference |
-|---|---:|---:|---:|
-| RAAN rate | -0.773273 deg/day | -0.773527 deg/day | 0.033% |
-| Periapsis-argument rate | 0.820180 deg/day | 0.817987 deg/day | 0.267% |
-
-See [`results/j2_validation.json`](results/j2_validation.json), [`results/harmonic_validation.json`](results/harmonic_validation.json), [`docs/model.md`](docs/model.md), and [`docs/uncertainty.md`](docs/uncertainty.md).
+See [`docs/model.md`](docs/model.md), [`docs/uncertainty.md`](docs/uncertainty.md), [`docs/terrain.md`](docs/terrain.md), and [`docs/reproducibility.md`](docs/reproducibility.md).
 
 ## Quick start
 
@@ -106,6 +77,7 @@ python -m pytest
 python examples/j2_precession.py --orbits 40
 python examples/harmonic_validation.py
 python examples/gravity_uncertainty.py --samples 16 --seed 20260817 --duration-days 1
+python examples/terrain_clearance.py
 ```
 
 Windows PowerShell users can activate the environment with `.venv\Scripts\Activate.ps1`.
@@ -118,7 +90,7 @@ Download the official NASA PDS nominal product:
 python scripts/download_grgm1200a.py
 ```
 
-Then evaluate the full degree/order 1200 field at a body-fixed point:
+Evaluate the full degree/order 1200 field at a body-fixed point:
 
 ```bash
 python examples/grgm1200a_gravity.py \
@@ -131,24 +103,9 @@ The archived GRGM1200A metadata used by the code are GM `4902.80011526323 km^3/s
 
 ## Gravity-field uncertainty
 
-`read_shadr(...)` retains the uncertainty fields distributed with a SHADR gravity product:
+`read_shadr(...)` retains the coefficient uncertainty fields distributed with a SHADR gravity product. These values do not contain the full off-diagonal covariance, so independent coefficient sampling requires explicit acknowledgement:
 
 ```python
-from lunar_astrodynamics import GRGM1200A, read_shadr
-
-model = read_shadr(
-    "data/gggrx_1200a_sha.tab",
-    max_degree=120,
-    frame=GRGM1200A.body_fixed_frame,
-)
-sigma_c20, sigma_s20 = model.coefficient_uncertainty(2, 0)
-```
-
-Those coefficient uncertainties do not contain cross-covariances. The library therefore refuses independent coefficient perturbation unless the approximation is acknowledged explicitly:
-
-```python
-from lunar_astrodynamics import sample_independent_coefficient_uncertainty
-
 realizations = sample_independent_coefficient_uncertainty(
     model,
     seed=1234,
@@ -157,130 +114,140 @@ realizations = sample_independent_coefficient_uncertainty(
 )
 ```
 
-For correlated GRGM1200A gravity uncertainty, use the covariance-derived clone perturbations archived by NASA PDS. Download only the files required for the study:
+For correlated GRGM1200A gravity uncertainty, use covariance-derived clone perturbations archived by NASA PDS:
 
 ```bash
 python scripts/download_grgm1200a_clones.py 1 2 3 4 5
 ```
 
-Clone coefficients are deviations from the nominal GRGM1200A solution. They must be added to the nominal coefficients before propagation. The library enforces that distinction:
+Clone coefficients are deviations from the nominal field. The library applies each perturbation to a compatible nominal GRGM1200A model before propagation. See [`docs/uncertainty.md`](docs/uncertainty.md).
 
-```python
-from pathlib import Path
-from lunar_astrodynamics import (
-    GRGM1200A,
-    load_grgm1200a_clone_ensemble,
-    propagate_gravity_ensemble,
-    read_shadr,
-)
+## LOLA terrain data
 
-nominal = read_shadr(
-    "data/gggrx_1200a_sha.tab",
-    max_degree=120,
-    frame=GRGM1200A.body_fixed_frame,
-)
-paths = sorted(Path("data/grgm1200a_clones").glob("*_sha.tab"))
-models = load_grgm1200a_clone_ensemble(
-    nominal,
-    paths,
-    max_degree=120,
-)
+For gravity/topography work, the recommended global source is NASA Goddard's 2024 **LOLA MOON_PA gridded dataset**. The 64 pixels/degree global grid has a reference radius of `1737.4 km` and is explicitly in the `MOON_PA_DE421` principal-axes frame.
 
-result = propagate_gravity_ensemble(
-    initial_state,
-    duration_s,
-    models,
-    rotation,
-    max_degree=120,
-)
-
-print(result.percentiles["minimum_altitude_m"])
-print(result.impact_fraction)
-```
-
-The default summary reports 5th, 50th, and 95th percentiles. See [`docs/uncertainty.md`](docs/uncertainty.md) for the statistical interpretation and limitations.
-
-The end-to-end example can use either the self-contained diagonal demonstration or external correlated clone perturbations:
+Download the gridline product:
 
 ```bash
-python examples/gravity_uncertainty.py \
-  --nominal data/gggrx_1200a_sha.tab \
-  --degree 120 \
-  --duration-days 1 \
-  --clones data/grgm1200a_clones/gggrx_1200a_clone0001_sha.tab \
-           data/grgm1200a_clones/gggrx_1200a_clone0002_sha.tab
+python scripts/download_lola_pa_shape.py --registration gridline
 ```
 
-## High-degree timing
+Install optional netCDF support and prepare a smaller working grid if desired:
 
-A timing harness is provided for measuring acceleration synthesis without turning variable shared-runner timings into a CI pass/fail criterion:
+```bash
+python -m pip install -e .[terrain]
+python scripts/prepare_lola_pa_grid.py \
+  data/LDEM64_PA_gridline_202405.grd \
+  --stride 8 \
+  --output data/lola_moon_pa_8ppd.npz
+```
+
+Native 64 pixels/degree is about `0.5 km` spacing at the lunar equator. Downsampling is useful for preliminary studies but directly reduces terrain fidelity.
+
+## Frame compatibility
+
+The recommended terrain product is `MOON_PA_DE421`, while GRGM1200A is a DE430 gravity solution. The code does not silently identify these frames.
+
+A combined science run should construct separate SPICE rotations:
+
+```python
+terrain_rotation = spice_rotation_provider(
+    "J2000",
+    "MOON_PA_DE421",
+    et_offset_s=et0,
+)
+
+gravity_rotation = spice_rotation_provider(
+    "J2000",
+    "YOUR_DE430_COMPATIBLE_LUNAR_PA_FRAME",
+    et_offset_s=et0,
+)
+```
+
+The exact frame names must exist in the caller's loaded kernel set. The terrain API also requires `terrain_frame` to match `terrain.frame`, so an accidental mismatch fails rather than producing a plausible but displaced surface.
+
+## Terrain-aware propagation
+
+```python
+result = propagate_with_terrain(
+    initial_state,
+    duration_s,
+    acceleration,
+    terrain,
+    terrain_rotation,
+    terrain_frame=terrain.frame,
+)
+
+report = result.clearance
+print(report.minimum_clearance_m)
+print(report.minimum_location.latitude_deg)
+print(report.minimum_location.longitude_deg_east)
+print(report.impacted)
+```
+
+The report includes minimum clearance, its time and body-fixed location, terrain elevation at closest approach, and impact time/location/elevation when an impact occurs.
+
+The spherical fallback is still available explicitly:
+
+```python
+make_mean_radius_surface_event(1_737_400.0)
+```
+
+`make_surface_event(...)` remains as a backward-compatible alias.
+
+## Why terrain changes the result
+
+The CI terrain example uses a circular orbit about `4.0 km` above the reference sphere and a synthetic 6 km mountain. The spherical model reports no impact. The terrain-aware model impacts the interpolated surface at about `1319.7 s`, near `72.86 degrees east`, where local terrain reaches approximately `4.0 km` above the reference sphere.
+
+Run it with:
+
+```bash
+python examples/terrain_clearance.py
+```
+
+A prepared LOLA grid can also be supplied. That demonstration uses a simple constant-rate orientation; science runs should use SPICE for the exact terrain frame and epoch.
+
+## Official LOLA PDS reader check
+
+A live validation utility downloads the official `LDEM_4` global PDS product and reports selected grid values:
+
+```bash
+python scripts/validate_lola_pds_reference.py
+```
+
+On 17 August 2026 the reader obtained, among others, `-796.0 m` at `0.125 N, 0.125 E`, `-3814.5 m` at `0.125 N, 90.125 E`, and `2432.0 m` at `0.125 N, 180.125 E`. These values are frozen into offline regression tests so routine CI does not depend on network access.
+
+The standard PDS grid identifies itself as the DE421 Mean Earth/Polar Axis frame. It validates the raw PDS reader and should not be silently substituted for the dedicated MOON_PA terrain grid.
+
+## High-degree timing
 
 ```bash
 python scripts/benchmark_harmonics.py --degree 1200 --repetitions 5
 ```
-
-It can also benchmark an externally downloaded SHADR model with `--model`.
-
-## Inertial propagation
-
-High-degree lunar gravity must not be frozen in an inertial frame. Supply an explicit body-fixed-from-inertial rotation:
-
-```python
-from lunar_astrodynamics import (
-    gravity_acceleration_inertial,
-    propagate_with_acceleration,
-    spice_rotation_provider,
-)
-
-rotation = spice_rotation_provider(
-    "J2000",
-    "YOUR_LOADED_LUNAR_PA_FRAME",
-    et_offset_s=et0,
-)
-
-acceleration = lambda t, r: gravity_acceleration_inertial(
-    t,
-    r,
-    model,
-    rotation,
-    max_degree=1200,
-)
-
-solution = propagate_with_acceleration(
-    initial_state,
-    duration_s,
-    acceleration,
-    collision_radius_m=1_737_400.0,
-)
-```
-
-The frame name is intentionally not hard-coded. It must correspond to the SPICE kernel set loaded by the user.
-
-## Mascons
-
-The implementation does not approximate mascons as separate point masses. Their gravity signatures are represented by the high-degree GRAIL spherical-harmonic coefficients. This is why `mascons` and `spherical-harmonics` are accurate repository topics once an actual GRAIL coefficient set is used.
 
 ## Repository layout
 
 ```text
 lunar-astrodynamics-simulation/
 ├── .github/workflows/ci.yml
-├── assets/
-│   ├── results/j2_precession.svg
-│   └── social/github-social-card-lunar-astrodynamics.png
 ├── docs/
 │   ├── model.md
 │   ├── reproducibility.md
+│   ├── terrain.md
 │   └── uncertainty.md
 ├── examples/
 │   ├── gravity_uncertainty.py
 │   ├── grgm1200a_gravity.py
 │   ├── harmonic_validation.py
-│   └── j2_precession.py
+│   ├── j2_precession.py
+│   └── terrain_clearance.py
 ├── scripts/
 │   ├── benchmark_harmonics.py
 │   ├── download_grgm1200a.py
-│   └── download_grgm1200a_clones.py
+│   ├── download_grgm1200a_clones.py
+│   ├── download_lola_pa_shape.py
+│   ├── prepare_lola_pa_grid.py
+│   └── validate_lola_pds_reference.py
 ├── src/lunar_astrodynamics/
 │   ├── analysis.py
 │   ├── constants.py
@@ -289,22 +256,18 @@ lunar-astrodynamics-simulation/
 │   ├── frames.py
 │   ├── harmonics.py
 │   ├── propagation.py
+│   ├── terrain.py
 │   └── uncertainty.py
-├── tests/
-├── CITATION.cff
-├── LICENSE
-├── Makefile
-├── pyproject.toml
-└── README.md
+└── tests/
 ```
 
 ## What this repository does not claim
 
-This remains a research and validation implementation, not certified flight-dynamics software. Degree/order 1200 is the current tested high-degree target; the direct normalized recursion is not presented as an arbitrary ultra-high-degree extended-range/Clenshaw implementation. The package can propagate empirical ensembles built from supplied covariance-derived GRGM1200A clone perturbations and can perform an explicitly diagonal coefficient-sigma approximation, but it does not construct or propagate the complete GRGM1200A covariance matrix internally. Gravity uncertainty here also does not include spacecraft state uncertainty, terrain uncertainty, third-body model uncertainty, solar radiation pressure uncertainty, or orbit-determination uncertainty.
+This remains a research and validation implementation, not certified flight-dynamics software. The terrain surface is a radial gridded shape with bilinear interpolation, so it cannot represent relief below the selected grid resolution. It does not yet include terrain uncertainty, finite spacecraft geometry, or landing-footprint contact. High-resolution terminal descent and surface operations should use specialised local DEMs.
 
-The repository does not bundle NASA's large gravity or clone datasets, lunar topography, automatic SPICE kernels, third-body gravity, solar radiation pressure, state covariance propagation, or orbit-determination estimation.
+The package does not construct the complete GRGM1200A covariance matrix internally. Earth/Sun third-body gravity, solar radiation pressure, state covariance propagation and orbit determination are also not yet included.
 
-See [docs/model.md](docs/model.md) for the force model, [docs/uncertainty.md](docs/uncertainty.md) for gravity-field uncertainty, and [docs/reproducibility.md](docs/reproducibility.md) for exact checks.
+The repository does not bundle NASA's large gravity, clone or LOLA datasets. SPICE kernels and frame/epoch selection remain caller-supplied parts of the numerical model.
 
 ## Cite this repository
 
