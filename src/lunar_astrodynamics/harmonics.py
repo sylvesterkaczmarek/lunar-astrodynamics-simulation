@@ -25,6 +25,9 @@ class SphericalHarmonicModel:
     name: str = "spherical-harmonic gravity model"
     frame: str = "body-fixed"
     normalization: str = "4pi"
+    sigma_c: FloatArray | None = None
+    sigma_s: FloatArray | None = None
+    mu_sigma_m3_s2: float | None = None
 
     def __post_init__(self) -> None:
         c = np.array(self.c, dtype=float, copy=True)
@@ -46,13 +49,42 @@ class SphericalHarmonicModel:
             raise ValueError("c[0,0] must be 1 for the central gravity term")
         if not np.isclose(s[0, 0], 0.0, atol=1e-15, rtol=0.0):
             raise ValueError("s[0,0] must be 0")
+
         upper = np.triu_indices(c.shape[0], k=1)
         if np.any(c[upper] != 0.0) or np.any(s[upper] != 0.0):
             raise ValueError("coefficients with order m > degree n must be zero")
+
+        if (self.sigma_c is None) != (self.sigma_s is None):
+            raise ValueError("sigma_c and sigma_s must either both be provided or both be omitted")
+        sigma_c: FloatArray | None = None
+        sigma_s: FloatArray | None = None
+        if self.sigma_c is not None and self.sigma_s is not None:
+            sigma_c = np.array(self.sigma_c, dtype=float, copy=True)
+            sigma_s = np.array(self.sigma_s, dtype=float, copy=True)
+            if sigma_c.shape != c.shape or sigma_s.shape != c.shape:
+                raise ValueError("sigma_c and sigma_s must match coefficient array shapes")
+            if (
+                not np.all(np.isfinite(sigma_c))
+                or not np.all(np.isfinite(sigma_s))
+                or np.any(sigma_c < 0.0)
+                or np.any(sigma_s < 0.0)
+            ):
+                raise ValueError("coefficient uncertainties must be finite and non-negative")
+            if np.any(sigma_c[upper] != 0.0) or np.any(sigma_s[upper] != 0.0):
+                raise ValueError("uncertainties with order m > degree n must be zero")
+            sigma_c.setflags(write=False)
+            sigma_s.setflags(write=False)
+
+        mu_sigma = self.mu_sigma_m3_s2
+        if mu_sigma is not None and (not np.isfinite(mu_sigma) or mu_sigma < 0.0):
+            raise ValueError("mu_sigma_m3_s2 must be finite and non-negative when provided")
+
         c.setflags(write=False)
         s.setflags(write=False)
         object.__setattr__(self, "c", c)
         object.__setattr__(self, "s", s)
+        object.__setattr__(self, "sigma_c", sigma_c)
+        object.__setattr__(self, "sigma_s", sigma_s)
 
     @property
     def max_degree(self) -> int:
@@ -63,6 +95,26 @@ class SphericalHarmonicModel:
         nonzero = np.argwhere((self.c != 0.0) | (self.s != 0.0))
         return int(nonzero[:, 1].max()) if nonzero.size else 0
 
+    @property
+    def has_coefficient_uncertainty(self) -> bool:
+        return self.sigma_c is not None and self.sigma_s is not None
+
+    def coefficient_uncertainty(self, degree: int, order: int) -> tuple[float, float]:
+        """Return the archived C/S uncertainty fields for coefficient (n, m).
+
+        The SHADR SIS calls these values coefficient uncertainties. Whether they
+        are calibrated standard deviations is product-specific; GRGM1200A's
+        product documentation identifies its archived coefficient uncertainties
+        as calibrated uncertainties. This method does not imply independence.
+        """
+        n = int(degree)
+        m = int(order)
+        if n < 0 or n > self.max_degree or m < 0 or m > n:
+            raise ValueError("coefficient degree/order is outside the model")
+        if self.sigma_c is None or self.sigma_s is None:
+            raise ValueError("this gravity model does not include coefficient uncertainties")
+        return float(self.sigma_c[n, m]), float(self.sigma_s[n, m])
+
     def truncated(self, max_degree: int, max_order: int | None = None) -> "SphericalHarmonicModel":
         degree = min(int(max_degree), self.max_degree)
         if degree < 0:
@@ -72,9 +124,22 @@ class SphericalHarmonicModel:
             raise ValueError("max_order must be non-negative")
         c = self.c[: degree + 1, : degree + 1].copy()
         s = self.s[: degree + 1, : degree + 1].copy()
+        sigma_c = (
+            None
+            if self.sigma_c is None
+            else self.sigma_c[: degree + 1, : degree + 1].copy()
+        )
+        sigma_s = (
+            None
+            if self.sigma_s is None
+            else self.sigma_s[: degree + 1, : degree + 1].copy()
+        )
         if order < degree:
             c[:, order + 1 :] = 0.0
             s[:, order + 1 :] = 0.0
+            if sigma_c is not None and sigma_s is not None:
+                sigma_c[:, order + 1 :] = 0.0
+                sigma_s[:, order + 1 :] = 0.0
         return SphericalHarmonicModel(
             self.mu_m3_s2,
             self.reference_radius_m,
@@ -82,6 +147,10 @@ class SphericalHarmonicModel:
             s,
             name=f"{self.name} (n<={degree}, m<={order})",
             frame=self.frame,
+            normalization=self.normalization,
+            sigma_c=sigma_c,
+            sigma_s=sigma_s,
+            mu_sigma_m3_s2=self.mu_sigma_m3_s2,
         )
 
 
@@ -104,7 +173,9 @@ def _field(record: str, start: int, width: int, label: str, record_number: int) 
     return value
 
 
-def _header_from_record(record: str) -> tuple[float, float, int, int, int, float, float]:
+def _header_from_record(
+    record: str,
+) -> tuple[float, float, float, int, int, int, float, float]:
     """Parse the 137-byte SHADR header data region using PDS column offsets."""
     if len(record) < 137:
         raise ValueError(
@@ -113,7 +184,9 @@ def _header_from_record(record: str) -> tuple[float, float, int, int, int, float
     try:
         radius_km = _parse_float(_field(record, 0, 23, "reference radius", 1))
         mu_km3_s2 = _parse_float(_field(record, 24, 23, "constant", 1))
-        _parse_float(_field(record, 48, 23, "uncertainty in constant", 1))
+        mu_sigma_km3_s2 = _parse_float(
+            _field(record, 48, 23, "uncertainty in constant", 1)
+        )
         degree = int(_field(record, 72, 5, "degree", 1))
         order = int(_field(record, 78, 5, "order", 1))
         normalization = int(_field(record, 84, 5, "normalization state", 1))
@@ -129,8 +202,10 @@ def _header_from_record(record: str) -> tuple[float, float, int, int, int, float
     if (
         not np.isfinite(radius_km)
         or not np.isfinite(mu_km3_s2)
+        or not np.isfinite(mu_sigma_km3_s2)
         or radius_km <= 0.0
         or mu_km3_s2 <= 0.0
+        or mu_sigma_km3_s2 < 0.0
         or degree < 0
         or order < 0
         or order > degree
@@ -139,6 +214,7 @@ def _header_from_record(record: str) -> tuple[float, float, int, int, int, float
     return (
         radius_km,
         mu_km3_s2,
+        mu_sigma_km3_s2,
         degree,
         order,
         normalization,
@@ -149,7 +225,7 @@ def _header_from_record(record: str) -> tuple[float, float, int, int, int, float
 
 def _coefficient_from_record(
     record: str, record_number: int
-) -> tuple[int, int, float, float]:
+) -> tuple[int, int, float, float, float, float]:
     """Parse the 107-byte SHADR coefficient data region using PDS offsets."""
     if len(record) < 107:
         raise ValueError(
@@ -167,9 +243,16 @@ def _coefficient_from_record(
         raise ValueError(f"invalid SHADR coefficient record {record_number}: {exc}") from exc
 
     values = np.array([c_nm, s_nm, sigma_c, sigma_s], dtype=float)
-    if n < 0 or m < 0 or m > n or not np.all(np.isfinite(values)):
+    if (
+        n < 0
+        or m < 0
+        or m > n
+        or not np.all(np.isfinite(values))
+        or sigma_c < 0.0
+        or sigma_s < 0.0
+    ):
         raise ValueError(f"invalid SHADR coefficient record {record_number}")
-    return n, m, c_nm, s_nm
+    return n, m, c_nm, s_nm, sigma_c, sigma_s
 
 
 def read_shadr(
@@ -179,18 +262,11 @@ def read_shadr(
     name: str | None = None,
     frame: str = "body-fixed principal-axes frame",
 ) -> SphericalHarmonicModel:
-    """Read a PDS SHADR ASCII gravity model with normalized coefficients.
+    """Read a PDS SHADR ASCII gravity model with coefficients and uncertainties.
 
-    PDS SHADR files use fixed 122-byte physical records. The header is one
-    logical 244-byte line containing 137 bytes of delimited data, 105 padding
-    bytes, and CRLF. Coefficient lines contain 107 bytes of comma-delimited
-    data, 13 padding bytes, and CRLF. The format does not require coefficient
-    rows to be ordered or complete, so this reader scans every row and indexes
-    coefficients by their explicit degree and order.
-
-    The evaluator assumes geodesy 4pi normalization. A SHADR normalization
-    state of 1 is therefore necessary but callers must also verify that the
-    specific product documentation defines that normalized convention.
+    PDS SHADR coefficient records contain Cnm, Snm and their associated
+    uncertainty fields. These values are retained verbatim. They are not
+    interpreted here as an independent covariance model.
     """
     close = False
     if hasattr(path_or_file, "read"):
@@ -213,6 +289,7 @@ def read_shadr(
         (
             radius_km,
             mu_km3_s2,
+            mu_sigma_km3_s2,
             file_degree,
             file_order,
             normalization,
@@ -232,6 +309,8 @@ def read_shadr(
             raise ValueError("max_degree must be non-negative")
         c = np.zeros((degree + 1, degree + 1), dtype=float)
         s = np.zeros_like(c)
+        sigma_c = np.zeros_like(c)
+        sigma_s = np.zeros_like(c)
         c[0, 0] = 1.0
         seen: set[tuple[int, int]] = set()
         coefficient_rows = 0
@@ -240,7 +319,9 @@ def read_shadr(
             record = _without_record_ending(raw_line)
             if not record.strip():
                 continue
-            n, m, c_nm, s_nm = _coefficient_from_record(record, record_number)
+            n, m, c_nm, s_nm, sigma_c_nm, sigma_s_nm = _coefficient_from_record(
+                record, record_number
+            )
             coefficient_rows += 1
             if n > file_degree or m > file_order:
                 raise ValueError(
@@ -254,6 +335,8 @@ def read_shadr(
                 seen.add(key)
                 c[n, m] = c_nm
                 s[n, m] = s_nm
+                sigma_c[n, m] = sigma_c_nm
+                sigma_s[n, m] = sigma_s_nm
 
         if coefficient_rows == 0 and file_degree > 0:
             raise ValueError("SHADR file contains no coefficient records")
@@ -265,6 +348,9 @@ def read_shadr(
             s=s,
             name=name or getattr(path_or_file, "name", "SHADR gravity model"),
             frame=frame,
+            sigma_c=sigma_c,
+            sigma_s=sigma_s,
+            mu_sigma_m3_s2=mu_sigma_km3_s2 * 1e9,
         )
     finally:
         if close:
