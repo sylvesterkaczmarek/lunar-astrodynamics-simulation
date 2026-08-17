@@ -15,16 +15,17 @@ from lunar_astrodynamics import (
     terrain_clearance_m,
 )
 
+EXPECTED_FILE_SIZE_BYTES = 736_545_335
 EXPECTED_NATIVE_SHAPE = (11_521, 23_041)
-SAMPLE_POINTS_DEG = (
-    (0.0, 0.0),
-    (0.0, 90.0),
-    (0.0, 180.0),
-    (0.0, 270.0),
-    (45.0, 45.0),
-    (-45.0, 315.0),
-    (89.0, 0.0),
-    (-89.0, 180.0),
+EXPECTED_REFERENCE_ELEVATIONS_M = (
+    (0.0, 0.0, -716.4626121520996),
+    (0.0, 90.0, -3817.3317909240723),
+    (0.0, 180.0, 2744.938850402832),
+    (0.0, 270.0, 258.55880975723267),
+    (45.0, 45.0, -543.4415936470032),
+    (-45.0, 315.0, -376.71446800231934),
+    (89.0, 0.0, -1468.7265157699585),
+    (-89.0, 180.0, -772.3435163497925),
 )
 
 
@@ -47,6 +48,12 @@ def _native_metadata(path: Path) -> dict[str, object]:
         from netCDF4 import Dataset
     except ImportError as exc:  # pragma: no cover - explicit live-validation dependency
         raise SystemExit("Install the terrain extra before running this script: pip install -e .[terrain]") from exc
+
+    if path.stat().st_size != EXPECTED_FILE_SIZE_BYTES:
+        raise ValueError(
+            f"unexpected LOLA MOON_PA file size {path.stat().st_size}; "
+            f"expected {EXPECTED_FILE_SIZE_BYTES} bytes for LDEM64_PA_gridline_202405.grd"
+        )
 
     with Dataset(path, "r") as dataset:
         variables = dataset.variables
@@ -79,6 +86,7 @@ def _native_metadata(path: Path) -> dict[str, object]:
             raise ValueError("native latitude spacing is not 1/64 degree")
 
         return {
+            "file_size_bytes": path.stat().st_size,
             "longitude_variable": lon_name,
             "latitude_variable": lat_name,
             "elevation_variable": z_name,
@@ -88,7 +96,7 @@ def _native_metadata(path: Path) -> dict[str, object]:
             "longitude_bounds_deg": [float(longitude[0]), float(longitude[-1])],
             "latitude_bounds_deg": [float(latitude[0]), float(latitude[-1])],
             "elevation_dtype": str(z_variable.dtype),
-            "elevation_units": getattr(z_variable, "units", None),
+            "elevation_units_attribute": getattr(z_variable, "units", None),
             "global_title": getattr(dataset, "title", None),
         }
 
@@ -121,8 +129,13 @@ def main() -> None:
     reference_altitude_m = args.spacecraft_reference_altitude_km * 1000.0
     spacecraft_radius_m = terrain.reference_radius_m + reference_altitude_m
     samples: list[dict[str, float]] = []
-    for latitude_deg, longitude_deg in SAMPLE_POINTS_DEG:
+    for latitude_deg, longitude_deg, expected_elevation_m in EXPECTED_REFERENCE_ELEVATIONS_M:
         elevation_m = terrain.elevation_m(np.deg2rad(latitude_deg), np.deg2rad(longitude_deg))
+        if not np.isclose(elevation_m, expected_elevation_m, rtol=0.0, atol=1e-6):
+            raise ValueError(
+                f"LOLA MOON_PA reference mismatch at ({latitude_deg}, {longitude_deg}): "
+                f"got {elevation_m} m, expected {expected_elevation_m} m"
+            )
         position = _cartesian_position(spacecraft_radius_m, latitude_deg, longitude_deg)
         clearance_m = terrain_clearance_m(
             0.0,
