@@ -4,13 +4,16 @@ import numpy as np
 import pytest
 
 from lunar_astrodynamics import (
+    GRGM1200A,
     GRGM1200A_CLONE_COUNT,
     GRGM1200A_CLONE_EXPECTED_SIZE_BYTES,
     MOON_MEAN_RADIUS_M,
     OrbitUncertaintySample,
     PropagationSettings,
     SphericalHarmonicModel,
+    apply_coefficient_perturbation,
     grgm1200a_clone_url,
+    load_grgm1200a_clone_ensemble,
     propagate_gravity_ensemble,
     read_grgm1200a_clone,
     read_shadr,
@@ -86,13 +89,31 @@ def _uncertain_model() -> SphericalHarmonicModel:
     )
 
 
-def _clone_fixture(*, incomplete: bool = False) -> StringIO:
+def _nominal_grgm_degree2() -> SphericalHarmonicModel:
+    c = np.zeros((3, 3))
+    s = np.zeros_like(c)
+    c[0, 0] = 1.0
+    c[2, 0] = -9.0e-5
+    c[2, 2] = 2.2e-5
+    s[2, 2] = -1.7e-5
+    return SphericalHarmonicModel(
+        GRGM1200A.mu_m3_s2,
+        GRGM1200A.reference_radius_m,
+        c,
+        s,
+        name="synthetic nominal GRGM1200A truncation",
+        frame=GRGM1200A.body_fixed_frame,
+        normalization=GRGM1200A.normalization,
+    )
+
+
+def _clone_fixture(*, incomplete: bool = False, scale: float = 1.0) -> StringIO:
     rows = [
-        "    1,    0, 1.0000000000000000E-08, 0.0000000000000000E+00",
-        "    1,    1, 2.0000000000000000E-08,-1.0000000000000000E-08",
-        "    2,    0,-9.0000000000000000E-05, 0.0000000000000000E+00",
-        "    2,    1, 3.0000000000000000E-07, 4.0000000000000000E-07",
-        "    2,    2, 2.2000000000000000E-05,-1.7000000000000000E-05",
+        f"    1,    0,{1.0e-10 * scale:23.16E},{0.0:23.16E}",
+        f"    1,    1,{2.0e-10 * scale:23.16E},{-1.0e-10 * scale:23.16E}",
+        f"    2,    0,{1.0e-7 * scale:23.16E},{0.0:23.16E}",
+        f"    2,    1,{3.0e-8 * scale:23.16E},{4.0e-8 * scale:23.16E}",
+        f"    2,    2,{2.0e-8 * scale:23.16E},{-1.0e-8 * scale:23.16E}",
     ]
     if incomplete:
         rows.pop()
@@ -202,19 +223,40 @@ def test_clone_url_matches_archived_pds_grouping() -> None:
         grgm1200a_clone_url(0)
 
 
-def test_clone_parser_loads_complete_correlated_realization() -> None:
-    model = read_grgm1200a_clone(_clone_fixture(), max_degree=2, name="clone test")
-    assert model.max_degree == 2
-    assert model.c[1, 1] == pytest.approx(2.0e-8)
-    assert model.s[2, 1] == pytest.approx(4.0e-7)
-    assert model.c[2, 2] == pytest.approx(2.2e-5)
-    assert model.s[2, 2] == pytest.approx(-1.7e-5)
-    assert not model.has_coefficient_uncertainty
+def test_clone_parser_returns_delta_and_application_adds_it_to_nominal() -> None:
+    perturbation = read_grgm1200a_clone(_clone_fixture(), max_degree=2, name="clone test")
+    assert perturbation.max_degree == 2
+    assert perturbation.c_delta[0, 0] == 0.0
+    assert perturbation.c_delta[2, 0] == pytest.approx(1.0e-7)
+    assert perturbation.s_delta[2, 1] == pytest.approx(4.0e-8)
+
+    nominal = _nominal_grgm_degree2()
+    realization = apply_coefficient_perturbation(nominal, perturbation)
+    assert realization.c[2, 0] == pytest.approx(nominal.c[2, 0] + 1.0e-7)
+    assert realization.c[2, 2] == pytest.approx(nominal.c[2, 2] + 2.0e-8)
+    assert realization.s[2, 2] == pytest.approx(nominal.s[2, 2] - 1.0e-8)
+    assert realization.c[0, 0] == 1.0
+    assert not realization.has_coefficient_uncertainty
 
 
 def test_clone_parser_rejects_incomplete_realization() -> None:
     with pytest.raises(ValueError, match="incomplete through degree 2"):
         read_grgm1200a_clone(_clone_fixture(incomplete=True), max_degree=2)
+
+
+def test_clone_ensemble_loader_applies_external_deltas(tmp_path) -> None:
+    first_path = tmp_path / "gggrx_1200a_clone0001_sha.tab"
+    second_path = tmp_path / "gggrx_1200a_clone0002_sha.tab"
+    first_path.write_text(_clone_fixture(scale=1.0).getvalue(), encoding="ascii")
+    second_path.write_text(_clone_fixture(scale=-1.0).getvalue(), encoding="ascii")
+
+    nominal = _nominal_grgm_degree2()
+    ensemble = load_grgm1200a_clone_ensemble(
+        nominal, [first_path, second_path], max_degree=2
+    )
+    assert len(ensemble) == 2
+    assert ensemble[0].c[2, 0] == pytest.approx(nominal.c[2, 0] + 1.0e-7)
+    assert ensemble[1].c[2, 0] == pytest.approx(nominal.c[2, 0] - 1.0e-7)
 
 
 def test_ensemble_summary_returns_percentiles_and_impact_fraction() -> None:
