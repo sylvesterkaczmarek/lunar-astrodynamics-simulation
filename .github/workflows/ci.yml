@@ -52,7 +52,7 @@ jobs:
         run: |
           python -m pip install -e .[validation]
           python scripts/download_independent_validation_data.py --output-dir /tmp/lunar-validation
-          python scripts/run_independent_validation.py --data-dir /tmp/lunar-validation --output /tmp/independent_validation.json
+          python scripts/run_independent_validation_compact.py --data-dir /tmp/lunar-validation --output /tmp/independent_validation.json
       - name: Degree-1200 gravity benchmark smoke
         if: matrix.python-version == '3.12'
         run: python scripts/benchmark_harmonics.py --degree 1200 --repetitions 2
