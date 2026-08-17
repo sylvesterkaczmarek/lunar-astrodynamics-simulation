@@ -82,6 +82,7 @@ from .propagation import (
     propagate,
     propagate_with_acceleration,
 )
+from .search_defaults import default_low_lunar_search_space
 from .stability import (
     CoarseToFineSearchResult,
     OrbitSearchPoint,
@@ -97,7 +98,6 @@ from .stability import (
     StabilitySearchSettings,
     StabilitySearchSpace,
     UncertaintyStabilitySummary,
-    default_low_lunar_search_space,
     harmonic_ensemble_dynamics,
     harmonic_search_dynamics,
     j2_search_dynamics,
