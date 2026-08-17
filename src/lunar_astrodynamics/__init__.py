@@ -1,6 +1,18 @@
 """Validated lunar astrodynamics models from GRAIL gravity through perturbation forces."""
 
-from .analysis import ElementHistory, element_history, linear_rate
+from .analysis import (
+    DirectionEvolutionStatistics,
+    ElementHistory,
+    OrbitEvolutionStatistics,
+    OrbitHistory,
+    ScalarEvolutionStatistics,
+    VectorEvolutionStatistics,
+    element_history,
+    linear_rate,
+    orbit_history,
+    scalar_evolution_statistics,
+    vector_evolution_statistics,
+)
 from .constants import (
     ASTRONOMICAL_UNIT_M,
     EARTH_GM_DE440_M3_S2,
@@ -112,6 +124,7 @@ __all__ = [
     "CallableForce",
     "ClassicalElements",
     "CompositeForceModel",
+    "DirectionEvolutionStatistics",
     "EARTH_GM_DE440_M3_S2",
     "ElementHistory",
     "EnsembleUncertaintyResult",
@@ -132,6 +145,8 @@ __all__ = [
     "MOON_GM_DE440_M3_S2",
     "MOON_MEAN_RADIUS_M",
     "ModifiedEquinoctialElements",
+    "OrbitEvolutionStatistics",
+    "OrbitHistory",
     "OrbitUncertaintySample",
     "OrbitalVectors",
     "PropagationSettings",
@@ -140,6 +155,7 @@ __all__ = [
     "SOLAR_RADIATION_PRESSURE_1_AU_N_M2",
     "SUN_GM_DE440_M3_S2",
     "SUN_NOMINAL_RADIUS_M",
+    "ScalarEvolutionStatistics",
     "SolarRadiationPressure",
     "SpiceEphemeris",
     "SpiceKernelRecord",
@@ -150,6 +166,7 @@ __all__ = [
     "TerrainPropagationResult",
     "TerrainShapeModel",
     "ThirdBodyGravity",
+    "VectorEvolutionStatistics",
     "analytical_j2_secular_rates",
     "analyze_terrain_clearance",
     "apparent_disk_illumination_fraction",
@@ -179,6 +196,7 @@ __all__ = [
     "modified_equinoctial_from_classical",
     "modified_equinoctial_from_state",
     "normalized_legendre_4pi",
+    "orbit_history",
     "orbital_period_s",
     "orbital_vectors_from_state",
     "propagate",
@@ -190,6 +208,7 @@ __all__ = [
     "rotation_z",
     "sample_independent_coefficient_uncertainty",
     "save_terrain_npz",
+    "scalar_evolution_statistics",
     "spice_ephemeris_from_et",
     "spice_ephemeris_from_utc",
     "spice_rotation_provider",
@@ -201,4 +220,5 @@ __all__ = [
     "third_body_acceleration",
     "total_acceleration",
     "validate_rotation_matrix",
+    "vector_evolution_statistics",
 ]
