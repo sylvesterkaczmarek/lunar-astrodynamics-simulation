@@ -44,6 +44,9 @@ jobs:
       - name: Gravity fidelity smoke example
         if: matrix.python-version == '3.12'
         run: python examples/gravity_fidelity.py --quick --output /tmp/gravity_fidelity.json --runtime-csv /tmp/gravity_fidelity.csv
+      - name: Ground-track and access smoke example
+        if: matrix.python-version == '3.12'
+        run: python examples/groundtrack_access.py --quick --output /tmp/groundtrack_access.json --track-csv /tmp/groundtrack.csv --access-csv /tmp/site_access.csv --coverage-csv /tmp/coverage.csv --earth-csv /tmp/earth_visibility.csv
       - name: Degree-1200 gravity benchmark smoke
         if: matrix.python-version == '3.12'
         run: python scripts/benchmark_harmonics.py --degree 1200 --repetitions 2
