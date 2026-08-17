@@ -38,6 +38,9 @@ jobs:
       - name: Frozen-orbit search smoke example
         if: matrix.python-version == '3.12'
         run: python examples/frozen_orbit_search.py --quick --output /tmp/frozen_search.json --csv /tmp/frozen_search.csv --map-csv /tmp/frozen_map.csv
+      - name: Targeting and station-keeping smoke example
+        if: matrix.python-version == '3.12'
+        run: python examples/targeting_stationkeeping.py --quick --output /tmp/targeting_stationkeeping.json
       - name: Degree-1200 gravity benchmark smoke
         if: matrix.python-version == '3.12'
         run: python scripts/benchmark_harmonics.py --degree 1200 --repetitions 2
