@@ -47,6 +47,12 @@ jobs:
       - name: Ground-track and access smoke example
         if: matrix.python-version == '3.12'
         run: python examples/groundtrack_access.py --quick --output /tmp/groundtrack_access.json --track-csv /tmp/groundtrack.csv --access-csv /tmp/site_access.csv --coverage-csv /tmp/coverage.csv --earth-csv /tmp/earth_visibility.csv
+      - name: Temporary live DE421 ground-track validation
+        if: matrix.python-version == '3.12'
+        run: |
+          python -m pip install 'spiceypy>=6,<8'
+          python scripts/download_groundtrack_kernels.py --output-dir /tmp/spice-de421
+          python examples/groundtrack_access.py --kernel-dir /tmp/spice-de421 --epoch-utc 2026-08-17T00:00:00 --duration-days 0.25 --samples 241 --output /tmp/groundtrack_de421.json --track-csv /tmp/groundtrack_de421.csv --access-csv /tmp/site_access_de421.csv --coverage-csv /tmp/coverage_de421.csv --earth-csv /tmp/earth_de421.csv
       - name: Degree-1200 gravity benchmark smoke
         if: matrix.python-version == '3.12'
         run: python scripts/benchmark_harmonics.py --degree 1200 --repetitions 2
