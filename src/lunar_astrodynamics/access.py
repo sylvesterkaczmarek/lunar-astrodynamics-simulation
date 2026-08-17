@@ -39,7 +39,11 @@ def _times(values: ArrayLike) -> FloatArray:
 
 def _positions(values: ArrayLike, count: int) -> FloatArray:
     positions = np.asarray(values, dtype=float)
-    if positions.shape == (3, count):
+    # Prefer the conventional sample-major (N, 3) layout when N == 3, where
+    # (N, 3) and (3, N) are otherwise shape-ambiguous.
+    if positions.shape == (count, 3):
+        pass
+    elif positions.shape == (3, count):
         positions = positions.T
     if positions.shape != (count, 3) or not np.all(np.isfinite(positions)):
         raise ValueError("positions_inertial_m must have shape (N, 3) or (3, N) and be finite")
