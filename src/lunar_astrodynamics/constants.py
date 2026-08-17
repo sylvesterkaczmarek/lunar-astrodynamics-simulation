@@ -41,8 +41,21 @@ GRGM1200A_J2 = LunarJ2Model(
     name="GRGM1200A low-degree J2 approximation",
 )
 
+# JPL DE440 mass parameters.  The Earth and Sun values are used by the
+# ephemeris-driven third-body helpers; callers can supply different values when
+# reproducing another ephemeris solution.
+SUN_GM_DE440_M3_S2 = 1.32712440041279419e20
+EARTH_GM_DE440_M3_S2 = 3.98600435507e14
 MOON_GM_DE440_M3_S2 = 4.902800e12
+
+# IAU 2012 exact astronomical unit and IAU 2015 nominal solar radius.
+ASTRONOMICAL_UNIT_M = 149_597_870_700.0
+SUN_NOMINAL_RADIUS_M = 695_700_000.0
 MOON_MEAN_RADIUS_M = 1_737_400.0
+
+# Representative mean direct solar momentum flux at one astronomical unit.
+# This is configurable in SolarRadiationPressure; it is not treated as exact.
+SOLAR_RADIATION_PRESSURE_1_AU_N_M2 = 4.56e-6
 
 GRGM1200A = GravityProduct(
     name="GRGM1200A",
