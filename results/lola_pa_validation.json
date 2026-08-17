@@ -1,0 +1,80 @@
+{
+  "validated_utc": "2026-08-17T19:50:28Z",
+  "product": "LDEM64_PA_gridline_202405.grd",
+  "source": "NASA Goddard PGDA LOLA MOON_PA gridded dataset",
+  "file_size_bytes": 736545335,
+  "frame": "MOON_PA_DE421",
+  "reference_radius_m": 1737400.0,
+  "registration": "gridline",
+  "native_shape": [11521, 23041],
+  "native_spacing_deg": 0.015625,
+  "native_variables": {
+    "longitude": "lon",
+    "latitude": "lat",
+    "elevation": "z",
+    "elevation_dimensions": ["lat", "lon"],
+    "elevation_dtype": "float32",
+    "elevation_units_attribute": null
+  },
+  "validation_stride": 64,
+  "validation_loaded_shape": [181, 361],
+  "reference_samples": [
+    {
+      "latitude_deg": 0.0,
+      "longitude_deg_east": 0.0,
+      "elevation_m": -716.4626121520996,
+      "spacecraft_reference_altitude_m": 10000.0,
+      "terrain_clearance_m": 10716.4626121521
+    },
+    {
+      "latitude_deg": 0.0,
+      "longitude_deg_east": 90.0,
+      "elevation_m": -3817.3317909240723,
+      "spacecraft_reference_altitude_m": 10000.0,
+      "terrain_clearance_m": 13817.331790924072
+    },
+    {
+      "latitude_deg": 0.0,
+      "longitude_deg_east": 180.0,
+      "elevation_m": 2744.938850402832,
+      "spacecraft_reference_altitude_m": 10000.0,
+      "terrain_clearance_m": 7255.061149597168
+    },
+    {
+      "latitude_deg": 0.0,
+      "longitude_deg_east": 270.0,
+      "elevation_m": 258.55880975723267,
+      "spacecraft_reference_altitude_m": 10000.0,
+      "terrain_clearance_m": 9741.441190242767
+    },
+    {
+      "latitude_deg": 45.0,
+      "longitude_deg_east": 45.0,
+      "elevation_m": -543.4415936470032,
+      "spacecraft_reference_altitude_m": 10000.0,
+      "terrain_clearance_m": 10543.441593647003
+    },
+    {
+      "latitude_deg": -45.0,
+      "longitude_deg_east": 315.0,
+      "elevation_m": -376.71446800231934,
+      "spacecraft_reference_altitude_m": 10000.0,
+      "terrain_clearance_m": 10376.71446800232
+    },
+    {
+      "latitude_deg": 89.0,
+      "longitude_deg_east": 0.0,
+      "elevation_m": -1468.7265157699585,
+      "spacecraft_reference_altitude_m": 10000.0,
+      "terrain_clearance_m": 11468.726515770191
+    },
+    {
+      "latitude_deg": -89.0,
+      "longitude_deg_east": 180.0,
+      "elevation_m": -772.3435163497925,
+      "spacecraft_reference_altitude_m": 10000.0,
+      "terrain_clearance_m": 10772.343516350025
+    }
+  ],
+  "important_finding": "The real netCDF/GMT z samples are kilometre-valued despite having no units attribute. load_lola_moon_pa_grd converts those samples to metres so the public terrain API remains SI."
+}

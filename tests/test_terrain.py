@@ -210,12 +210,12 @@ def test_prepared_npz_round_trip_preserves_metadata(tmp_path: Path) -> None:
     assert loaded.elevation_grid_m == pytest.approx(terrain.elevation_grid_m)
 
 
-def test_gmt_netcdf_loader_reads_64ppd_pixel_coordinates_and_elevation(tmp_path: Path) -> None:
+def test_gmt_netcdf_loader_reads_64ppd_pixel_coordinates_and_converts_km_to_m(tmp_path: Path) -> None:
     path = tmp_path / "synthetic.grd"
     spacing = 1.0 / 64.0
     lon = np.array([0.5, 1.5, 2.5, 3.5, 4.5]) * spacing
     lat = np.array([-2.0, -1.0, 0.0, 1.0, 2.0]) * spacing
-    z = np.add.outer(np.arange(lat.size), np.arange(lon.size)).astype(np.float32)
+    z_km = np.add.outer(np.arange(lat.size), np.arange(lon.size)).astype(np.float32)
     with netcdf_file(path, "w") as dataset:
         dataset.createDimension("y", lat.size)
         dataset.createDimension("x", lon.size)
@@ -224,11 +224,11 @@ def test_gmt_netcdf_loader_reads_64ppd_pixel_coordinates_and_elevation(tmp_path:
         zvar = dataset.createVariable("z", "f4", ("y", "x"))
         xvar[:] = lon
         yvar[:] = lat
-        zvar[:] = z
+        zvar[:] = z_km
     terrain = load_lola_moon_pa_grd(path, registration="pixel")
     assert terrain.frame == LOLA_MOON_PA_DE421_FRAME
     assert terrain.reference_radius_m == pytest.approx(LOLA_REFERENCE_RADIUS_M)
-    assert terrain.elevation_m(0.0, np.deg2rad(lon[2])) == pytest.approx(z[2, 2])
+    assert terrain.elevation_m(0.0, np.deg2rad(lon[2])) == pytest.approx(z_km[2, 2] * 1000.0)
 
 
 def _synthetic_pds_label(*, resolution: int = 1, frame: str = "MEAN EARTH/POLAR AXIS OF DE421") -> str:
