@@ -11,11 +11,13 @@ from lunar_astrodynamics import (
 
 
 def _tesseral_model() -> SphericalHarmonicModel:
-    c = np.zeros((3, 3))
+    c = np.zeros((4, 4))
     s = np.zeros_like(c)
     c[0, 0] = 1.0
     c[2, 2] = 4.0e-5
     s[2, 2] = -2.0e-5
+    c[3, 1] = 7.0e-6
+    s[3, 1] = 5.0e-6
     return SphericalHarmonicModel(4.9028e12, 1.738e6, c, s)
 
 
@@ -36,4 +38,18 @@ def test_inertial_wrapper_rotates_position_and_acceleration_consistently() -> No
     r_i = np.array([1.87e6, 0.22e6, 0.31e6])
     expected = rotation.T @ gravity_acceleration_body_fixed(rotation @ r_i, model)
     actual = gravity_acceleration_inertial(123.0, r_i, model, provider)
+    assert actual == pytest.approx(expected, rel=1e-14, abs=1e-14)
+
+
+def test_inertial_wrapper_preserves_pole_safe_cartesian_limit() -> None:
+    model = _tesseral_model()
+    rotation = rotation_z(1.1)
+    provider = lambda _time: rotation
+    r_i = np.array([0.0, 0.0, 1.90e6])
+
+    body_position = rotation @ r_i
+    expected = rotation.T @ gravity_acceleration_body_fixed(body_position, model)
+    actual = gravity_acceleration_inertial(456.0, r_i, model, provider)
+
+    assert np.linalg.norm(actual[:2]) > 1e-8
     assert actual == pytest.approx(expected, rel=1e-14, abs=1e-14)
