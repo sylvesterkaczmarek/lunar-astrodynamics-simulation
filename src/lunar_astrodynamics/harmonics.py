@@ -271,34 +271,48 @@ def read_shadr(
             handle.close()
 
 
-def normalized_legendre_4pi(
-    latitude_rad: float, max_degree: int
-) -> tuple[FloatArray, FloatArray]:
-    """Return geodesy-4pi normalized Pbar_nm and dPbar_nm/d(latitude).
+def _normalized_legendre_4pi_from_direction(
+    sin_latitude: float,
+    cos_latitude: float,
+    max_degree: int,
+    *,
+    longitude_limit: bool,
+) -> tuple[FloatArray, FloatArray, FloatArray | None]:
+    """Evaluate normalized ALFs, latitude derivatives, and optional Pbar/cos(phi).
 
-    The forward recursion operates directly on normalized functions, avoiding
-    factorial overflow and remaining finite at the poles. No Condon-Shortley
-    phase is included, matching geodetic gravity-field convention.
+    ``longitude_limit`` requests the auxiliary quantity
+
+        Qbar_nm = Pbar_nm / cos(phi),  m >= 1,
+
+    evaluated from its own recurrence rather than by division. Qbar is the
+    finite analytical factor needed by the longitudinal component of the
+    spherical gradient. Its recurrence remains defined at the geographic
+    poles, where the usual ``(1 / cos(phi)) dU/dlambda`` expression is a
+    coordinate singularity. Qbar[:, 0] is intentionally zero because the
+    zonal terms have no longitudinal derivative.
     """
     nmax = int(max_degree)
     if nmax < 0:
         raise ValueError("max_degree must be non-negative")
-    if not np.isfinite(latitude_rad):
-        raise ValueError("latitude must be finite")
+    if not np.isfinite(sin_latitude) or not np.isfinite(cos_latitude):
+        raise ValueError("latitude direction cosines must be finite")
 
-    x = float(np.sin(latitude_rad))
-    t = float(np.cos(latitude_rad))
+    x = float(sin_latitude)
+    t = float(cos_latitude)
     p = np.zeros((nmax + 1, nmax + 1), dtype=float)
     dp = np.zeros_like(p)
+    q = np.zeros_like(p) if longitude_limit else None
     p[0, 0] = 1.0
     if nmax == 0:
-        return p, dp
+        return p, dp, q
 
     sqrt3 = np.sqrt(3.0)
     p[1, 0] = sqrt3 * x
     dp[1, 0] = sqrt3 * t
     p[1, 1] = sqrt3 * t
     dp[1, 1] = -sqrt3 * x
+    if q is not None:
+        q[1, 1] = sqrt3
 
     for n in range(2, nmax + 1):
         diag = np.sqrt((2.0 * n + 1.0) / (2.0 * n))
@@ -306,10 +320,14 @@ def normalized_legendre_4pi(
         prev_diag_d = dp[n - 1, n - 1]
         p[n, n] = diag * t * prev_diag
         dp[n, n] = diag * (-x * prev_diag + t * prev_diag_d)
+        if q is not None:
+            q[n, n] = diag * prev_diag
 
         subdiag = np.sqrt(2.0 * n + 1.0)
         p[n, n - 1] = subdiag * x * prev_diag
         dp[n, n - 1] = subdiag * (t * prev_diag + x * prev_diag_d)
+        if q is not None:
+            q[n, n - 1] = subdiag * x * q[n - 1, n - 1]
 
         m = np.arange(n - 1, dtype=float)
         denominator = n * n - m * m
@@ -324,6 +342,32 @@ def normalized_legendre_4pi(
             a * (t * p[n - 1, : n - 1] + x * dp[n - 1, : n - 1])
             - b * dp[n - 2, : n - 1]
         )
+        if q is not None and n > 2:
+            q[n, 1 : n - 1] = (
+                a[1:] * x * q[n - 1, 1 : n - 1]
+                - b[1:] * q[n - 2, 1 : n - 1]
+            )
+
+    return p, dp, q
+
+
+def normalized_legendre_4pi(
+    latitude_rad: float, max_degree: int
+) -> tuple[FloatArray, FloatArray]:
+    """Return geodesy-4pi normalized Pbar_nm and dPbar_nm/d(latitude).
+
+    The forward recursion operates directly on normalized functions, avoiding
+    factorial overflow. No Condon-Shortley phase is included, matching the
+    geodetic convention used by the GRAIL SHADR gravity products.
+    """
+    if not np.isfinite(latitude_rad):
+        raise ValueError("latitude must be finite")
+    p, dp, _ = _normalized_legendre_4pi_from_direction(
+        float(np.sin(latitude_rad)),
+        float(np.cos(latitude_rad)),
+        max_degree,
+        longitude_limit=False,
+    )
     return p, dp
 
 
@@ -341,19 +385,41 @@ def _evaluation_limits(
     return nmax, mmax
 
 
-def _body_fixed_spherical(
+def _body_fixed_geometry(
     position_m: ArrayLike,
-) -> tuple[FloatArray, float, float, float, float]:
+) -> tuple[FloatArray, float, float, float, float, float, float]:
+    """Return pole-safe body-fixed spherical geometry from a Cartesian position."""
     r_vec = np.asarray(position_m, dtype=float)
     if r_vec.shape != (3,) or not np.all(np.isfinite(r_vec)):
         raise ValueError("position must be a finite 3-vector")
     radius = float(np.linalg.norm(r_vec))
     if radius == 0.0:
         raise ValueError("position cannot be the central-body origin")
+
     transverse = float(np.hypot(r_vec[0], r_vec[1]))
-    latitude = float(np.arctan2(r_vec[2], transverse))
-    longitude = float(np.arctan2(r_vec[1], r_vec[0])) if transverse > 0.0 else 0.0
-    return r_vec, radius, latitude, longitude, transverse
+    sin_latitude = float(r_vec[2] / radius)
+    cos_latitude = float(transverse / radius)
+    if transverse > 0.0:
+        cos_longitude = float(r_vec[0] / transverse)
+        sin_longitude = float(r_vec[1] / transverse)
+        longitude = float(np.arctan2(r_vec[1], r_vec[0]))
+    else:
+        # Longitude is undefined exactly on the axis. Choosing lambda=0 fixes
+        # the local basis to the body x/y axes; the Cartesian gravity limit is
+        # unique because Qbar_nm supplies the exact m=1 pole contribution.
+        cos_longitude = 1.0
+        sin_longitude = 0.0
+        longitude = 0.0
+
+    return (
+        r_vec,
+        radius,
+        sin_latitude,
+        cos_latitude,
+        cos_longitude,
+        sin_longitude,
+        longitude,
+    )
 
 
 def gravity_potential_body_fixed(
@@ -364,9 +430,22 @@ def gravity_potential_body_fixed(
     max_order: int | None = None,
 ) -> float:
     """Evaluate positive gravitational potential U in m^2/s^2."""
-    _, radius, latitude, longitude, _ = _body_fixed_spherical(position_m)
+    (
+        _,
+        radius,
+        sin_latitude,
+        cos_latitude,
+        _,
+        _,
+        longitude,
+    ) = _body_fixed_geometry(position_m)
     nmax, mmax = _evaluation_limits(model, max_degree, max_order)
-    p, _ = normalized_legendre_4pi(latitude, nmax)
+    p, _, _ = _normalized_legendre_4pi_from_direction(
+        sin_latitude,
+        cos_latitude,
+        nmax,
+        longitude_limit=False,
+    )
     m = np.arange(mmax + 1, dtype=float)
     cos_m = np.cos(m * longitude)
     sin_m = np.sin(m * longitude)
@@ -375,7 +454,10 @@ def gravity_potential_body_fixed(
     total = 0.0
     for n in range(nmax + 1):
         upper = min(n, mmax) + 1
-        harmonics = model.c[n, :upper] * cos_m[:upper] + model.s[n, :upper] * sin_m[:upper]
+        harmonics = (
+            model.c[n, :upper] * cos_m[:upper]
+            + model.s[n, :upper] * sin_m[:upper]
+        )
         total += radial_power * float(np.dot(p[n, :upper], harmonics))
         radial_power *= radial_ratio
     return float(model.mu_m3_s2 / radius * total)
@@ -388,22 +470,31 @@ def gravity_acceleration_body_fixed(
     max_degree: int | None = None,
     max_order: int | None = None,
 ) -> FloatArray:
-    """Evaluate spherical-harmonic gravitational acceleration in m/s^2."""
-    r_vec, radius, latitude, longitude, transverse = _body_fixed_spherical(position_m)
-    nmax, mmax = _evaluation_limits(model, max_degree, max_order)
+    """Evaluate pole-safe spherical-harmonic gravitational acceleration in m/s^2.
 
-    has_non_zonal = mmax > 0 and (
-        np.any(model.c[: nmax + 1, 1 : mmax + 1] != 0.0)
-        or np.any(model.s[: nmax + 1, 1 : mmax + 1] != 0.0)
+    The radial and latitudinal sums use Pbar_nm and dPbar_nm/dphi. The
+    longitudinal sum uses Qbar_nm = Pbar_nm/cos(phi), synthesized directly by
+    recurrence. This removes the coordinate singularity at the poles without
+    displacing the evaluation point or suppressing non-zonal gravity terms.
+    """
+    (
+        _,
+        radius,
+        sin_latitude,
+        cos_latitude,
+        cos_longitude,
+        sin_longitude,
+        longitude,
+    ) = _body_fixed_geometry(position_m)
+    nmax, mmax = _evaluation_limits(model, max_degree, max_order)
+    p, dp, q = _normalized_legendre_4pi_from_direction(
+        sin_latitude,
+        cos_latitude,
+        nmax,
+        longitude_limit=True,
     )
-    if transverse <= 1e-14 * radius and has_non_zonal:
-        eps = 1e-10
-        sign = 1.0 if r_vec[2] >= 0.0 else -1.0
-        proxy = np.array([eps * radius, 0.0, sign * radius * np.sqrt(1.0 - eps * eps)])
-        return gravity_acceleration_body_fixed(
-            proxy, model, max_degree=max_degree, max_order=max_order
-        )
-    p, dp = normalized_legendre_4pi(latitude, nmax)
+    assert q is not None
+
     m = np.arange(mmax + 1, dtype=float)
     cos_m = np.cos(m * longitude)
     sin_m = np.sin(m * longitude)
@@ -412,37 +503,40 @@ def gravity_acceleration_body_fixed(
     radial_power = 1.0
     sum_r = 0.0
     sum_lat = 0.0
-    sum_lon = 0.0
+    sum_lon_over_cos = 0.0
     for n in range(nmax + 1):
         upper = min(n, mmax) + 1
         c = model.c[n, :upper]
         s = model.s[n, :upper]
         trig = c * cos_m[:upper] + s * sin_m[:upper]
-        p_row = p[n, :upper]
         weighted = radial_power
-        sum_r += (n + 1.0) * weighted * float(np.dot(p_row, trig))
+        sum_r += (n + 1.0) * weighted * float(np.dot(p[n, :upper], trig))
         sum_lat += weighted * float(np.dot(dp[n, :upper], trig))
         if upper > 1:
             dlon = m[:upper] * (-c * sin_m[:upper] + s * cos_m[:upper])
-            sum_lon += weighted * float(np.dot(p_row, dlon))
+            sum_lon_over_cos += weighted * float(np.dot(q[n, :upper], dlon))
         radial_power *= radial_ratio
 
     mu_over_r2 = model.mu_m3_s2 / radius**2
     a_r = -mu_over_r2 * sum_r
     a_lat = mu_over_r2 * sum_lat
-    cos_lat = float(np.cos(latitude))
-    a_lon = (
-        0.0
-        if mmax == 0 or abs(cos_lat) < 1e-15
-        else mu_over_r2 * sum_lon / cos_lat
-    )
+    a_lon = mu_over_r2 * sum_lon_over_cos
 
-    sin_lat = float(np.sin(latitude))
-    cos_lon = float(np.cos(longitude))
-    sin_lon = float(np.sin(longitude))
-    e_r = np.array([cos_lat * cos_lon, cos_lat * sin_lon, sin_lat])
-    e_lat = np.array([-sin_lat * cos_lon, -sin_lat * sin_lon, cos_lat])
-    e_lon = np.array([-sin_lon, cos_lon, 0.0])
+    e_r = np.array(
+        [
+            cos_latitude * cos_longitude,
+            cos_latitude * sin_longitude,
+            sin_latitude,
+        ]
+    )
+    e_lat = np.array(
+        [
+            -sin_latitude * cos_longitude,
+            -sin_latitude * sin_longitude,
+            cos_latitude,
+        ]
+    )
+    e_lon = np.array([-sin_longitude, cos_longitude, 0.0])
     return (a_r * e_r + a_lat * e_lat + a_lon * e_lon).astype(float)
 
 
