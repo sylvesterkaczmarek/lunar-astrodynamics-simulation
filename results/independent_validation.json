@@ -1,0 +1,155 @@
+{
+  "validated_utc": "2026-08-17T23:17:34Z",
+  "campaign": "independent scientific validation of lunar-astrodynamics-simulation",
+  "hard_acceptance_passed": true,
+  "software": {
+    "python": "3.12.13",
+    "platform": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
+    "numpy": "2.5.2",
+    "scipy": "1.18.0",
+    "spiceypy": "7.0.0",
+    "pyshtools": "4.14.1",
+    "mpmath": "1.4.1"
+  },
+  "external_data": [
+    {"filename":"naif0012.tls","size_bytes":5257,"sha256":"678e32bdb5a744117a467cd9601cd6b373f0e9bc9bbde1371d5eee39600a039b"},
+    {"filename":"de421.bsp","size_bytes":16790528,"sha256":"08b20db2ae22488650641c5a9033e5bfda4b1c4b440cfeaf20f621cfa18ecdb3"},
+    {"filename":"moon_pa_de421_1900-2050.bpc","size_bytes":1770496,"sha256":"656f90616403d75a75f0cd6c8830fc5b44f8cb4facb5ccb8915e752b397520cf"},
+    {"filename":"moon_080317.tf","size_bytes":21437,"sha256":"78732477b96f9863e7b0d65bcee3c22b8707ca5ed0db56d1173319cb2e8c7993"},
+    {"filename":"gggrx_0900c_sha.tab","size_bytes":49574944,"sha256":"dab6ab06e0d3d7cbc594ea4bd03151a65534ed5fdf4f147ae38662428c04454e"},
+    {"filename":"gggrx_0900c_sha.lbl","size_bytes":10828,"sha256":"acc623e4b42a19f8feba1e7bda5189e984aa907491db12dede64bd426a1681c0"},
+    {"filename":"gggrx_1200b_sha.tab","size_bytes":88059844,"sha256":"4285057bd66f7cbe5bb869ac3149a8d5219cc993e9fe93f3f254551d95d51dd0"},
+    {"filename":"gggrx_1200b_sha.lbl","size_bytes":10636,"sha256":"e41e7cad1d124681a61e70bb061f34879a95da7658025cf151dabe8f18071af4"},
+    {"filename":"LRO_ES_36_GRGM900C_L600.BSP","size_bytes":14466048,"sha256":"d70017f3ce1aa63a10abf73e765629bffadb2d3a784cb120576133b88c88e52c"},
+    {"filename":"LRO_ES_36_GRGM900C_L600.LBL","size_bytes":1892,"sha256":"70ee1dce4964ba19e29a62304d7b12e0fc1ea6c69d661952c09d2c7f922952c9"},
+    {"filename":"LDEM_4.IMG","size_bytes":2073600,"sha256":"972d66d7f330abca62abc21aae270661516c00dd1a881ec102b94df9563656b5"},
+    {"filename":"LDEM_4.LBL","size_bytes":5107,"sha256":"b5a197b4d417e3b5e0e84f8fe15f9a1d2203b8eb5d7213236c0ffbc86e940cc6"}
+  ],
+  "hard_acceptance_checks": {
+    "grgm900c_vs_shtools": true,
+    "grgm1200b_vs_shtools": true,
+    "frame_transformations_vs_cspice": true,
+    "third_body_vs_high_precision": true,
+    "terrain_decode_vs_raw_pds": true,
+    "independent_same_model_propagation": true
+  },
+  "gravity": {
+    "reference": "SHTOOLS MakeGravGridPoint using independently parsed 4pi-normalized SHADR coefficients",
+    "grgm900c": {
+      "gm_m3_s2": 4902799967088.641,
+      "reference_radius_m": 1738000.0,
+      "maximum_relative_difference_by_degree": {
+        "10": 4.755204596321984e-16,
+        "60": 2.1815504547660894e-15,
+        "120": 3.3648149155313702e-15,
+        "300": 1.1337225203974276e-14,
+        "600": 1.0826923865519872e-14
+      }
+    },
+    "grgm1200b": {
+      "gm_m3_s2": 4902800122445.3,
+      "reference_radius_m": 1738000.0,
+      "maximum_relative_difference_by_degree": {
+        "60": 1.903716089703611e-15,
+        "120": 7.03552160086617e-15,
+        "300": 1.2877288261151715e-14,
+        "600": 1.1820313060847509e-14,
+        "1200": 1.1820313060847509e-14
+      },
+      "degree_1200_a_priori_relative_tolerance": 1.8483522148258044e-09,
+      "frame_note": "body-fixed acceleration comparison only; no DE421/DE430 frame equivalence is assumed"
+    }
+  },
+  "frames": {
+    "frame": "MOON_PA_DE421",
+    "reference": "direct CSPICE sxform/pxform/reclat through SpiceyPy",
+    "max_abs_rotation_matrix_difference": 0.0,
+    "max_altitude_difference_m": 0.0,
+    "max_latitude_difference_deg": 3.552713678800501e-15,
+    "max_longitude_difference_deg": 2.842170943040401e-14,
+    "tolerances": {"matrix_max_abs":5e-13,"altitude_m":1e-6,"angle_deg":1e-10}
+  },
+  "third_body": {
+    "reference": "80-decimal-digit mpmath Newtonian differential acceleration using DE421 body positions",
+    "earth": {
+      "absolute_difference_m_s2": 2.047928786644023e-19,
+      "relative_difference": 1.3583980929564699e-14,
+      "subtraction_condition_estimate": 356.89386572949417,
+      "a_priori_relative_tolerance": 7.92463574160727e-12
+    },
+    "sun": {
+      "absolute_difference_m_s2": 3.4180464058171107e-19,
+      "relative_difference": 3.1516664297905163e-12,
+      "subtraction_condition_estimate": 106295.40557823476,
+      "a_priori_relative_tolerance": 2.3602321336965105e-09
+    }
+  },
+  "terrain": {
+    "product": "LDEM_4",
+    "frame": "MEAN EARTH/POLAR AXIS OF DE421",
+    "reference_radius_m": 1737400.0,
+    "reference": "independent NumPy signed-16-bit decode using official PDS label fields",
+    "max_elevation_difference_m": 0.0,
+    "max_latitude_difference_deg": 0.0,
+    "max_longitude_difference_deg": 0.0,
+    "representative_points": [
+      {"latitude_deg":89.875,"longitude_deg_east":0.125,"elevation_m":-119.5},
+      {"latitude_deg":89.875,"longitude_deg_east":180.125,"elevation_m":-36.5},
+      {"latitude_deg":44.875,"longitude_deg_east":45.125,"elevation_m":-1053.0},
+      {"latitude_deg":0.125,"longitude_deg_east":0.125,"elevation_m":-796.0},
+      {"latitude_deg":0.125,"longitude_deg_east":90.125,"elevation_m":-3814.5},
+      {"latitude_deg":-89.875,"longitude_deg_east":180.125,"elevation_m":172.0}
+    ]
+  },
+  "independent_same_model_propagation": {
+    "setup": "120x120 GRGM900C + DE421 MOON_PA_DE421 + Earth/Sun point masses; production stack versus independently parsed SHTOOLS gravity, direct SpiceyPy frame/ephemeris calls, standalone third-body formula and separate SciPy RHS",
+    "horizon_s": 7200.0,
+    "sample_count": 121,
+    "final_position_difference_m": 0.00012863484354669967,
+    "maximum_position_difference_m": 0.0001295857008249761,
+    "rms_position_difference_m": 8.363887734914517e-05,
+    "final_velocity_difference_m_s": 1.1253341085499709e-07,
+    "maximum_velocity_difference_m_s": 1.1253341085499709e-07,
+    "max_sampled_acceleration_difference_m_s2": 1.6801456619968444e-14,
+    "a_priori_maximum_position_tolerance_m": 0.02002177468777948,
+    "a_priori_maximum_velocity_tolerance_m_s": 2.000604852438319e-05
+  },
+  "lro_reconstructed_trajectory": {
+    "truth_source": "PDS LRO Radio Science GEODYN monthly reconstructed SPK",
+    "truth_file": "LRO_ES_36_GRGM900C_L600.BSP",
+    "lro_spice_object_id": -85,
+    "spk_coverage_et_s": [489658568.18390733, 490946768.1834973],
+    "validation_epoch_et_s": 490079198.1837638,
+    "validation_epoch_utc": "2015-07-13T17:05:30.000",
+    "archive_name_note": "GRGM900C_L600 denotes a degree-900 GRGM900C solution with a power-law constraint applied above degree 600; it does not mean the reconstruction used a 600x600 truncation.",
+    "candidate_model": "GRGM900C truncation + Earth/Sun point masses + DE421/MOON_PA_DE421; no tracking-data estimation",
+    "six_hour_degree600": {
+      "final_position_difference_m": 12.425969398924556,
+      "maximum_position_difference_m": 12.563279825270557,
+      "rms_position_difference_m": 6.930974617795726,
+      "final_velocity_difference_m_s": 0.010480285829010514,
+      "radial_rms_m": 0.5015705961016327,
+      "along_track_rms_m": 6.736985603989795,
+      "cross_track_rms_m": 1.5491484955578412,
+      "tight_vs_nominal_final_position_difference_m": 0.006467999187474746,
+      "tight_vs_nominal_final_velocity_difference_m_s": 6.167387713737952e-06
+    },
+    "twenty_four_hour_degree120": {
+      "final_position_difference_m": 24.034030167723717,
+      "maximum_position_difference_m": 333.133831039412,
+      "rms_position_difference_m": 139.75911783192268,
+      "final_velocity_difference_m_s": 0.08313059881214659,
+      "maximum_velocity_difference_m_s": 0.20889463932201013,
+      "radial_rms_m": 38.000334136769965,
+      "along_track_rms_m": 133.96978361990153,
+      "cross_track_rms_m": 11.860973800149878
+    },
+    "interpretation": "No pass/fail threshold is assigned to the reconstructed-spacecraft comparison because the open-loop model deliberately omits forces, manoeuvres and estimated parameters used by precision orbit determination. The residual is a physical-model discrepancy, not a pure numerical error."
+  },
+  "incomplete_validation": [
+    "The exact GEODYN LRO precision-orbit-determination force model, spacecraft attitude/area history, manoeuvres and estimated parameters were not reconstructed from the public archive, so the LRO SPK comparison is not an identical-model benchmark.",
+    "A long-duration GRGM1200B trajectory benchmark was not performed because an authoritative compatible DE430 lunar principal-axes orientation context was not identified; the repository does not substitute DE421 or DE440 silently.",
+    "The independent same-model propagation uses SciPy DOP853 on both sides, although the force evaluation, coefficient parser, frame/ephemeris access and RHS are independent. The reconstructed LRO SPK supplies the fully external trajectory evidence.",
+    "Terrain validation establishes file decoding and coordinate reconstruction, not the measurement uncertainty of LOLA topography."
+  ]
+}
