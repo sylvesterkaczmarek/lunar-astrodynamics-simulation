@@ -1,4 +1,4 @@
-"""Download selected official NASA PDS GRGM1200A clone gravity fields."""
+"""Download selected official NASA PDS GRGM1200A clone perturbation fields."""
 
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ def download(url: str, destination: Path) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
-            "Download selected covariance-derived GRGM1200A clone fields. "
+            "Download selected covariance-derived GRGM1200A clone perturbations. "
             "The archive contains 500 large files, so indices must be explicit."
         )
     )
@@ -77,10 +77,10 @@ def main() -> None:
                 f"{GRGM1200A_CLONE_EXPECTED_SIZE_BYTES}"
             )
 
-        model = read_grgm1200a_clone(destination, max_degree=2, name=filename)
+        perturbation = read_grgm1200a_clone(destination, max_degree=2, name=filename)
         print(
-            f"Verified clone {index}: {size} bytes, "
-            f"GM={model.mu_m3_s2:.8f} m^3/s^2, degree smoke={model.max_degree}"
+            f"Verified clone perturbation {index}: {size} bytes, "
+            f"degree smoke={perturbation.max_degree}"
         )
 
 
