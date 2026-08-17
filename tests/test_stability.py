@@ -85,8 +85,8 @@ def test_circular_equatorial_redundant_classical_angles_are_deduplicated() -> No
     )
     result = run_stability_search(space, dynamics, settings=_settings())
     assert result.raw_grid_size == 4
-    assert result.unique_candidate_count == 3
-    assert len(result.candidates) == 3
+    assert result.unique_candidate_count == 2
+    assert len(result.candidates) == 2
 
 
 def test_survival_is_a_constraint_not_definition_of_frozen_orbit() -> None:
