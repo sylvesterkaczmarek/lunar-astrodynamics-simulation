@@ -6,9 +6,9 @@
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-yellow.svg)
 
-Validated Python lunar-orbit simulation and preliminary mission-analysis tooling from central gravity and J2 through high-degree GRAIL spherical harmonics, gravity-field uncertainty ensembles, LOLA terrain clearance, ephemeris-driven Earth/Sun perturbations, optional solar radiation pressure with lunar eclipse handling, nonsingular orbital analysis, automated low-lunar-orbit stability/frozen-orbit search, local targeting and preliminary impulsive station-keeping analysis.
+Validated Python lunar-orbit simulation and preliminary mission-analysis tooling from central gravity and J2 through high-degree GRAIL spherical harmonics, gravity-field uncertainty ensembles, LOLA terrain clearance, ephemeris-driven Earth/Sun perturbations, optional solar radiation pressure with lunar eclipse handling, nonsingular orbital analysis, automated low-lunar-orbit stability/frozen-orbit search, local targeting, preliminary impulsive station-keeping analysis, and gravity/force-model fidelity selection.
 
-The code keeps gravity, terrain, ephemerides, frames, uncertainty, perturbation forces, orbital-analysis conventions, search definitions, numerical sensitivity settings, correction diagnostics and control thresholds explicit. Large NASA/NAIF datasets remain external and simulation provenance is exposed rather than hidden behind automatic model choices.
+The code keeps gravity, terrain, ephemerides, frames, uncertainty, perturbation forces, orbital-analysis conventions, search definitions, numerical sensitivity settings, correction diagnostics, control thresholds and fidelity tolerances explicit. Large NASA/NAIF datasets remain external and simulation provenance is exposed rather than hidden behind automatic model choices.
 
 ## At a glance
 
@@ -28,6 +28,9 @@ flowchart LR
     C --> Q
     Q --> T[Targeting and sensitivity]
     T --> K[Impulsive station-keeping estimate]
+    G --> D[Degree/order convergence]
+    D --> R[Fidelity versus runtime]
+    F --> R
 ```
 
 ## Implemented capabilities
@@ -66,11 +69,17 @@ flowchart LR
 - scaled damped least-squares differential correction with line search, rank/conditioning checks and explicit non-convergence results
 - local targeting of periselene, aposelene, eccentricity-vector drift, sampled periapsis location and terrain clearance
 - threshold-triggered impulsive station-keeping estimates with per-manoeuvre and total delta-v accounting
+- arbitrary gravity degree/order convergence against an explicit high-degree reference
+- pointwise absolute/relative acceleration errors with radial and optional along-track/cross-track decomposition
+- trajectory-level gravity fidelity for position, velocity, periselene/eccentricity variation, terrain clearance and impact/lifetime
+- tolerance-based selection of the lowest tested harmonic truncation for the supplied samples or trajectory
+- measured fidelity-versus-runtime reports for harmonic acceleration and propagation
+- optional force-model ladders from central/J2 through high-degree GRAIL, third bodies and SRP
 - external gravity, terrain and SPICE download/validation tooling
 
 ## Validation
 
-The automated suite contains **144 tests** and passes on Python 3.10, 3.12 and 3.13.
+The automated suite contains **152 tests** and passes on Python 3.10, 3.12 and 3.13.
 
 Gravity validation includes normalized `C20` versus an independent J2 implementation, Cartesian finite-difference gradients, zonal/tesseral/sectoral fields, equatorial and polar cases, pole-crossing continuity, degree/order truncation, degree-1200 finiteness, and body-fixed/inertial consistency.
 
@@ -86,6 +95,8 @@ Stability-search validation covers two-body invariants, frozen metrics independe
 
 Targeting validation covers an analytically exact zero-acceleration state-transition matrix, finite-difference step consistency in two-body motion, an analytically solvable terminal-state correction, explicit zero-rank corrector failure, two-body apsis sensitivities against closed-form derivatives, two-body orbital-target convergence, explicit terrain-target failure without terrain, and successful/over-limit station-keeping cases.
 
+Fidelity validation covers a synthetic normalized `C20` field against the independent closed-form J2 acceleration, independent degree/order truncation using synthetic `C22/S22`, tolerance-based minimum-truncation selection, trajectory convergence for a known central-only field, terrain-clearance fidelity, measured positive runtimes, the standard force-model ladder and arbitrary custom `SearchDynamics` ladder cases.
+
 Retained gravity checks are:
 
 | Check | Result |
@@ -99,6 +110,7 @@ Scientific documentation:
 - [`docs/orbital_analysis.md`](docs/orbital_analysis.md)
 - [`docs/frozen_orbit_search.md`](docs/frozen_orbit_search.md)
 - [`docs/targeting.md`](docs/targeting.md)
+- [`docs/fidelity.md`](docs/fidelity.md)
 - [`docs/uncertainty.md`](docs/uncertainty.md)
 - [`docs/terrain.md`](docs/terrain.md)
 - [`docs/forces.md`](docs/forces.md)
@@ -120,9 +132,71 @@ python examples/terrain_clearance.py
 python examples/nonsingular_analysis.py --orbits 10
 python examples/frozen_orbit_search.py --quick
 python examples/targeting_stationkeeping.py --quick
+python examples/gravity_fidelity.py --quick
 ```
 
 Windows PowerShell users can activate the environment with `.venv\Scripts\Activate.ps1`.
+
+## Gravity and force-model fidelity
+
+`compare_harmonic_accelerations(...)` and `compare_harmonic_trajectories(...)` provide an error/performance basis for selecting gravity degree and order instead of propagating every case at the largest available truncation.
+
+```python
+truncations = (
+    HarmonicTruncation(20, 20),
+    HarmonicTruncation(40, 40),
+    HarmonicTruncation(60, 60),
+    HarmonicTruncation(120, 120),
+)
+
+acceleration = compare_harmonic_accelerations(
+    gravity_model,
+    body_fixed_from_inertial,
+    positions,
+    times_s=times,
+    velocities_m_s=velocities,
+    truncations=truncations,
+    reference=HarmonicTruncation(300, 300),
+)
+
+trajectory = compare_harmonic_trajectories(
+    gravity_model,
+    body_fixed_from_inertial,
+    initial_state,
+    duration_s,
+    truncations=truncations,
+    reference=HarmonicTruncation(300, 300),
+)
+```
+
+Pointwise results retain absolute and relative acceleration error plus signed radial error. When velocity defines a nondegenerate RTN frame they also retain along-track and cross-track error. Trajectory comparisons report final and maximum sampled position/velocity differences, periselene and eccentricity-variation differences, optional terrain-clearance differences, impact agreement and lifetime difference.
+
+A tolerance policy can select the lowest **tested** degree/order pair that satisfies mission-relevant criteria:
+
+```python
+selection = select_lowest_harmonic_truncation(
+    trajectory,
+    FidelityTolerance(
+        maximum_final_position_difference_m=100.0,
+        maximum_final_velocity_difference_m_s=0.05,
+        maximum_periselene_variation_difference_m=50.0,
+    ),
+)
+```
+
+The selection applies only to the supplied positions or propagated trajectory, with its frame, epoch, duration, force model, terrain and integration settings. The library intentionally does not turn this result into an altitude-to-degree rule.
+
+`GravityFidelityStudy.write_runtime_csv(...)` places measured runtime and errors on the same rows. `build_force_model_ladder(...)` and `compare_force_model_ladder(...)` optionally extend the analysis from central/J2 through truncated and high-degree GRAIL, then third bodies and SRP.
+
+Run the self-contained workflow:
+
+```bash
+python examples/gravity_fidelity.py --quick
+```
+
+The quick example uses a deterministic synthetic degree-20 lunar-like field. With its short 0.04-day horizon and default tolerances, acceleration error selects `12x12` while the trajectory-output tolerances accept `2x2`. That difference is intentional evidence that the required fidelity depends on the chosen metric, sample set and horizon. It is not a recommendation for a real lunar mission.
+
+For external GRAIL work the example accepts an SHADR file and requires an explicit caller-loaded SPICE body-fixed frame compatible with the gravity product. See [`docs/fidelity.md`](docs/fidelity.md).
 
 ## Automated stability and frozen-orbit search
 
@@ -346,12 +420,15 @@ A combined run should construct the gravity and terrain transformations required
 python scripts/benchmark_harmonics.py --degree 1200 --repetitions 5
 ```
 
+For mission-specific timing and accuracy trade-offs, prefer the gravity-fidelity workflow because it measures runtime beside the corresponding truncation error rather than timing one degree in isolation.
+
 ## Repository layout
 
 ```text
 lunar-astrodynamics-simulation/
 ├── .github/workflows/ci.yml
 ├── docs/
+│   ├── fidelity.md
 │   ├── forces.md
 │   ├── frozen_orbit_search.md
 │   ├── lola_pa_validation.md
@@ -364,6 +441,7 @@ lunar-astrodynamics-simulation/
 ├── examples/
 │   ├── force_model_comparison.py
 │   ├── frozen_orbit_search.py
+│   ├── gravity_fidelity.py
 │   ├── gravity_uncertainty.py
 │   ├── grgm1200a_gravity.py
 │   ├── harmonic_validation.py
@@ -389,6 +467,7 @@ lunar-astrodynamics-simulation/
 │   ├── dynamics.py
 │   ├── elements.py
 │   ├── ephemeris.py
+│   ├── fidelity.py
 │   ├── forces.py
 │   ├── frames.py
 │   ├── harmonics.py
@@ -407,6 +486,8 @@ This is research and validation software, not certified flight-dynamics software
 
 A top-ranked search result is a numerical candidate under the stated model, epoch, duration, grid, refinement, constraints and ranking policy. It is not automatically a flight-certified frozen orbit, a guarantee of stationkeeping-free operation, or proof of long-term stability. Short propagation horizons can miss long-period instability and coarse grids can miss narrow stable regions. Promising candidates should be re-propagated for much longer periods at appropriate high gravity/force-model fidelity and through relevant uncertainty ensembles.
 
+A harmonic truncation selected by the fidelity tools is only the lowest **tested** truncation that met the requested tolerances for the supplied position set or trajectory. The high-degree reference is itself a numerical model rather than truth, finite samples do not bound error everywhere, and runtime measurements depend on hardware/software. No universal altitude-to-degree sufficiency claim is made and the library does not automatically switch harmonic degree during propagation.
+
 Finite-difference sensitivity is a local numerical approximation whose reliability depends on perturbation size, integration tolerance, model smoothness and distance from events or active constraints. The repository records half/base/double step diagnostics but does not claim that this replaces independent sensitivity verification. The local differential corrector can fail because of ill-conditioning, local insensitivity, step-size sensitivity, impacts or nonlinear basin limits, and such failures are returned explicitly.
 
 The station-keeping simulator uses instantaneous ideal impulses at fixed threshold-check epochs. It does not model orbit-determination error, navigation covariance, maneuver execution error, finite burn duration, thrust/attitude limits, minimum impulse bit, maneuver windows, communications/operations constraints, missed burns, propulsion duty cycles or mass depletion. Its maneuver counts and delta-v totals are preliminary comparative estimates rather than operational budgets.
@@ -419,7 +500,7 @@ SRP is a configurable cannonball model. It does not model spacecraft attitude, s
 
 The package does not construct the complete GRGM1200A covariance matrix internally. Terrain uncertainty, state covariance propagation and orbit determination are also not yet included.
 
-The repository does not bundle NASA gravity/terrain products or NAIF kernels. Kernel coverage, kernel provenance, frame selection, epoch, integration settings, search space, ranking policy, target definition, finite-difference settings and station-keeping thresholds remain caller-controlled parts of the numerical model.
+The repository does not bundle NASA gravity/terrain products or NAIF kernels. Kernel coverage, kernel provenance, frame selection, epoch, integration settings, search space, ranking policy, target definition, finite-difference settings, station-keeping thresholds, fidelity reference and fidelity tolerances remain caller-controlled parts of the numerical model.
 
 ## Cite this repository
 
