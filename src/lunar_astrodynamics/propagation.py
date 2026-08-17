@@ -41,7 +41,12 @@ class PropagationSettings:
         return np.array([self.position_atol_m] * 3 + [self.velocity_atol_m_s] * 3, dtype=float)
 
 
-def make_surface_event(collision_radius_m: float):
+def make_mean_radius_surface_event(collision_radius_m: float):
+    """Return the simple spherical mean-radius impact event.
+
+    This is the deliberately low-fidelity fallback collision model. Terrain-aware
+    studies should use ``make_terrain_impact_event`` / ``propagate_with_terrain``.
+    """
     if not np.isfinite(collision_radius_m) or collision_radius_m <= 0.0:
         raise ValueError("collision_radius_m must be finite and positive")
 
@@ -51,6 +56,11 @@ def make_surface_event(collision_radius_m: float):
     surface_event.terminal = True  # type: ignore[attr-defined]
     surface_event.direction = -1.0  # type: ignore[attr-defined]
     return surface_event
+
+
+def make_surface_event(collision_radius_m: float):
+    """Backward-compatible alias for :func:`make_mean_radius_surface_event`."""
+    return make_mean_radius_surface_event(collision_radius_m)
 
 
 def _validate_common(
@@ -105,7 +115,7 @@ def propagate(
         rtol=settings.rtol,
         atol=settings.atol,
         max_step=settings.max_step_s,
-        events=make_surface_event(model.collision_radius_m),
+        events=make_mean_radius_surface_event(model.collision_radius_m),
     )
 
 
@@ -138,5 +148,5 @@ def propagate_with_acceleration(
         rtol=settings.rtol,
         atol=settings.atol,
         max_step=settings.max_step_s,
-        events=make_surface_event(collision_radius_m),
+        events=make_mean_radius_surface_event(collision_radius_m),
     )

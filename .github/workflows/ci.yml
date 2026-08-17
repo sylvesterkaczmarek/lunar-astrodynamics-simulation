@@ -29,6 +29,9 @@ jobs:
       - name: Gravity uncertainty smoke example
         if: matrix.python-version == '3.12'
         run: python examples/gravity_uncertainty.py --samples 3 --duration-days 0.05 --output /tmp/gravity_uncertainty.json
+      - name: Terrain clearance smoke example
+        if: matrix.python-version == '3.12'
+        run: python examples/terrain_clearance.py --output /tmp/terrain_clearance.json
       - name: Degree-1200 gravity benchmark smoke
         if: matrix.python-version == '3.12'
         run: python scripts/benchmark_harmonics.py --degree 1200 --repetitions 2

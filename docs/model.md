@@ -141,17 +141,28 @@ The test suite covers central gravity, independent C20/J2 agreement, Cartesian f
 
 Uncertainty tests additionally cover SHADR sigma retention, validation and truncation, seeded diagonal sampling, mandatory opt-in to independence, clone archive URL mapping, coefficient-only clone-perturbation loading, incomplete-clone rejection, application of clone deltas to a nominal field, multi-clone realization loading, percentile summaries, impact fractions, and end-to-end propagation through multiple gravity realizations.
 
+Terrain tests cover bilinear interpolation, longitude wrapping, antimeridian continuity, exact-pole behavior, pixel-registration polar caps, explicit frame mismatch rejection, terrain-impact root finding and geometry reporting, GMT/netCDF loading, PDS3 IMG/label decoding, prepared-grid metadata round trips, and selected reference elevations independently observed from the official NASA/PDS LDEM_4 product. See [`terrain.md`](terrain.md).
+
 ## Numerical complexity
 
 Direct harmonic synthesis is `O(N^2)` and maintains triangular arrays for `Pbar_nm`, its latitude derivative, and `Qbar_nm`. `scripts/benchmark_harmonics.py` reports timing without imposing a variable CI speed threshold.
 
 Ensemble propagation scales with the number of supplied gravity realizations and currently executes members serially for deterministic, transparent behavior.
 
+Terrain clearance evaluation is dominated by frame transformation and local bilinear grid interpolation. `propagate_with_terrain(...)` also retains dense ODE output and performs a post-propagation clearance scan with local scalar refinement.
+
 ## Mascons and surface handling
 
 Mascon signatures are represented through high-degree GRAIL coefficients rather than separate point masses.
 
-The gravity reference radius is not a physical surface. Orbit termination still uses a spherical mean-radius collision boundary. Reported altitude uncertainty is therefore radial altitude uncertainty, not terrain-clearance uncertainty.
+The gravity reference radius is not treated as a physical lunar surface. Two collision models are available:
+
+- `make_mean_radius_surface_event(...)` is the explicitly named spherical fallback;
+- `make_terrain_impact_event(...)` and `propagate_with_terrain(...)` compare spacecraft radius with a local body-fixed terrain shape model.
+
+The terrain model can use the NASA Goddard 2024 LOLA MOON_PA global shape grid or compatible external LOLA-derived grids. Because the recommended topography is `MOON_PA_DE421` and GRGM1200A is associated with DE430, the gravity and terrain rotations remain separate model inputs. The code rejects a terrain rotation whose declared frame does not equal `terrain.frame`.
+
+See [`terrain.md`](terrain.md) for product provenance, interpolation rules and resolution limits.
 
 ## Current scientific limitations
 
@@ -160,10 +171,12 @@ The gravity reference radius is not a physical surface. Orbit termination still 
 - The package does not construct the complete GRGM1200A covariance matrix internally.
 - Correlated gravity uncertainty is represented by covariance-derived PDS clone perturbations applied to a compatible nominal GRGM1200A model.
 - Diagonal coefficient sampling omits correlations and requires explicit acknowledgement.
-- The nominal GRGM1200A and clone datasets are not bundled.
+- The nominal GRGM1200A, clone and LOLA terrain datasets are not bundled.
 - SPICE kernels and compatible lunar principal-axes frames remain caller supplied.
-- Lunar topography, Earth/Sun third-body gravity, solar radiation pressure, and time-variable tides are not yet included.
+- Terrain is represented as a radial gridded shape with bilinear interpolation; sub-grid relief and terrain uncertainty are not modeled.
+- The recommended global PA terrain product is DE421 while GRGM1200A is DE430, so separate explicit frame transformations are required.
+- Earth/Sun third-body gravity, solar radiation pressure, and time-variable tides are not yet included.
 - Spacecraft state covariance propagation and orbit determination are not included.
 - High-degree synthesis is CPU/NumPy based and is not certified flight-dynamics software.
 
-These exclusions keep gravity-field uncertainty results from being mistaken for a complete mission uncertainty budget.
+These exclusions keep the simulation from being mistaken for a complete flight-clearance or mission uncertainty system.
