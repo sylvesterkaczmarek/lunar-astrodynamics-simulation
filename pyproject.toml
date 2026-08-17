@@ -18,6 +18,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest>=8,<10"]
 spice = ["spiceypy>=6,<8"]
+terrain = ["netCDF4>=1.6,<2"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
