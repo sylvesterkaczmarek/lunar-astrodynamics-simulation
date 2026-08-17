@@ -1,0 +1,100 @@
+{
+  "validated_utc": "2026-08-17T22:40:13Z",
+  "validation_type": "live NAIF DE421 ground-track, site-access, coverage, and Earth-occultation workflow",
+  "model_scope": "central lunar gravity geometry validation; not a high-fidelity orbit-prediction truth case",
+  "epoch": {
+    "epoch_utc": "2026-08-17T00:00:00",
+    "epoch_et_s": 840196869.1829052,
+    "inertial_frame": "J2000",
+    "observer": "MOON",
+    "aberration_correction": "NONE",
+    "body_fixed_frame": "MOON_ME_DE421"
+  },
+  "kernels": [
+    {
+      "name": "naif0012.tls",
+      "size_bytes": 5257,
+      "kind": "LSK"
+    },
+    {
+      "name": "de421.bsp",
+      "size_bytes": 16790528,
+      "kind": "SPK"
+    },
+    {
+      "name": "moon_pa_de421_1900-2050.bpc",
+      "size_bytes": 1770496,
+      "kind": "binary PCK"
+    },
+    {
+      "name": "moon_080317.tf",
+      "size_bytes": 21437,
+      "kind": "lunar frame kernel"
+    }
+  ],
+  "trajectory": {
+    "nominal_altitude_km": 100.0,
+    "duration_days": 0.25,
+    "samples": 241,
+    "initial_polar_plane_longitude_deg_east": 27.0,
+    "minimum_site_elevation_deg": 10.0,
+    "latitude_min_deg": -89.76998737236589,
+    "latitude_max_deg": 89.2710322477781,
+    "reference_altitude_min_km": 99.99999999999417,
+    "reference_altitude_max_km": 100.00000000000256
+  },
+  "sites": [
+    {
+      "name": "Apollo 11 Tranquility Base",
+      "latitude_deg": 0.67409,
+      "longitude_deg_east": 23.47298,
+      "coordinate_source": "NASA Apollo 11 Lunar Surface Journal mission overview",
+      "access_window_count": 4,
+      "total_access_time_s": 1582.4655255288508,
+      "access_fraction": 0.07326229284855791,
+      "maximum_elevation_deg": 67.64394885526575,
+      "minimum_slant_range_km": 107.63381372718064,
+      "mean_revisit_interval_s": 6995.85770624423,
+      "maximum_revisit_interval_s": 7065.513087586722
+    },
+    {
+      "name": "Apollo 17 Taurus-Littrow",
+      "latitude_deg": 20.1911,
+      "longitude_deg_east": 30.7769,
+      "coordinate_source": "NASA Science Taurus-Littrow Valley resource",
+      "access_window_count": 4,
+      "total_access_time_s": 1421.5987109747912,
+      "access_fraction": 0.06581475513772181,
+      "maximum_elevation_deg": 36.21980166300279,
+      "minimum_slant_range_km": 161.4179572100971,
+      "mean_revisit_interval_s": 7078.453168181325,
+      "maximum_revisit_interval_s": 7084.051127495459
+    }
+  ],
+  "coverage": {
+    "grid_shape": [13, 12],
+    "grid_point_covered_fraction": 0.34615384615384615,
+    "mean_dwell_time_s": 447.9789307790129,
+    "median_dwell_time_s": 0.0,
+    "maximum_dwell_time_s": 1566.054542293494,
+    "mean_revisit_interval_over_cells_s": 7068.268521504732,
+    "maximum_revisit_interval_over_cells_s": 7081.1541847782355,
+    "note": "covered_fraction is the fraction of configured latitude/longitude grid points, not equal-area lunar surface coverage"
+  },
+  "earth_visibility": {
+    "visible_time_fraction": 0.6333333333333075,
+    "minimum_visible_fraction": 0.0,
+    "fully_occulted_sample_fraction": 0.3775933609958506,
+    "partial_occultation_sample_fraction": 0.008298755186721992,
+    "visible_window_count": 4,
+    "earth_range_min_km": 386393.6381162282,
+    "earth_range_max_km": 390968.7878624043
+  },
+  "limitations": [
+    "The validation orbit used central lunar gravity so the run isolates access/frame/occultation geometry rather than high-fidelity orbit prediction.",
+    "The Apollo site elevations were set to the mean-radius reference surface; terrain-derived elevation should be supplied for local topographic studies.",
+    "Access-window boundaries are interpolated from the 241 trajectory samples and are sampling dependent.",
+    "Earth occultation uses a spherical Moon and circular nominal Earth disk.",
+    "No terrain-aware line-of-sight ray sampling was enabled in this archive-level example."
+  ]
+}

@@ -6,9 +6,9 @@
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-yellow.svg)
 
-Validated Python lunar-orbit simulation and preliminary mission-analysis tooling from central gravity and J2 through high-degree GRAIL spherical harmonics, gravity-field uncertainty ensembles, LOLA terrain clearance, ephemeris-driven Earth/Sun perturbations, optional solar radiation pressure with lunar eclipse handling, nonsingular orbital analysis, automated low-lunar-orbit stability/frozen-orbit search, local targeting, preliminary impulsive station-keeping analysis, and gravity/force-model fidelity selection.
+Validated Python lunar-orbit simulation and preliminary mission-analysis tooling from central gravity and J2 through high-degree GRAIL spherical harmonics, gravity-field uncertainty ensembles, LOLA terrain clearance, ephemeris-driven Earth/Sun perturbations, optional solar radiation pressure with lunar eclipse handling, nonsingular orbital analysis, automated low-lunar-orbit stability/frozen-orbit search, local targeting, preliminary impulsive station-keeping analysis, gravity/force-model fidelity selection, and lunar ground-track/site-access/coverage analysis.
 
-The code keeps gravity, terrain, ephemerides, frames, uncertainty, perturbation forces, orbital-analysis conventions, search definitions, numerical sensitivity settings, correction diagnostics, control thresholds and fidelity tolerances explicit. Large NASA/NAIF datasets remain external and simulation provenance is exposed rather than hidden behind automatic model choices.
+The code keeps gravity, terrain, ephemerides, frames, uncertainty, perturbation forces, orbital-analysis conventions, search definitions, numerical sensitivity settings, correction diagnostics, control thresholds, fidelity tolerances, surface-site coordinates and coverage definitions explicit. Large NASA/NAIF datasets remain external and simulation provenance is exposed rather than hidden behind automatic model choices.
 
 ## At a glance
 
@@ -31,6 +31,10 @@ flowchart LR
     G --> D[Degree/order convergence]
     D --> R[Fidelity versus runtime]
     F --> R
+    P --> X[Ground track and site access]
+    L --> X
+    E --> X
+    X --> V[Coverage and Earth visibility]
 ```
 
 ## Implemented capabilities
@@ -75,11 +79,17 @@ flowchart LR
 - tolerance-based selection of the lowest tested harmonic truncation for the supplied samples or trajectory
 - measured fidelity-versus-runtime reports for harmonic acceleration and propagation
 - optional force-model ladders from central/J2 through high-degree GRAIL, third bodies and SRP
+- explicit lunar body-fixed ground-track histories with wrapped/unwrapped east-positive longitude and pole-safe conventions
+- surface-site elevation/slant-range/access geometry with spherical-limb and optional sampled terrain line-of-sight checks
+- multi-site access windows, duration, closest approach, outage and revisit metrics
+- configurable regional/global lunar coverage grids with dwell and revisit statistics
+- optional SPICE-driven Earth visibility with finite-disk lunar occultation
+- structured JSON/CSV access, coverage, ground-track and Earth-visibility outputs
 - external gravity, terrain and SPICE download/validation tooling
 
 ## Validation
 
-The automated suite contains **152 tests** and passes on Python 3.10, 3.12 and 3.13.
+The automated suite contains **163 tests** and passes on Python 3.10, 3.12 and 3.13.
 
 Gravity validation includes normalized `C20` versus an independent J2 implementation, Cartesian finite-difference gradients, zonal/tesseral/sectoral fields, equatorial and polar cases, pole-crossing continuity, degree/order truncation, degree-1200 finiteness, and body-fixed/inertial consistency.
 
@@ -97,6 +107,8 @@ Targeting validation covers an analytically exact zero-acceleration state-transi
 
 Fidelity validation covers a synthetic normalized `C20` field against the independent closed-form J2 acceleration, independent degree/order truncation using synthetic `C22/S22`, tolerance-based minimum-truncation selection, trajectory convergence for a known central-only field, terrain-clearance fidelity, measured positive runtimes, the standard force-model ladder and arbitrary custom `SearchDynamics` ladder cases.
 
+Access/coverage validation covers cardinal and wrapped longitudes, exact-pole longitude handling, known overhead/far-side site visibility, terrain line-of-sight obstruction, access-window timing/closest approach, independent multi-site results, dwell-grid metrics, finite-disk Earth occultation and structured exports.
+
 Retained gravity checks are:
 
 | Check | Result |
@@ -111,6 +123,7 @@ Scientific documentation:
 - [`docs/frozen_orbit_search.md`](docs/frozen_orbit_search.md)
 - [`docs/targeting.md`](docs/targeting.md)
 - [`docs/fidelity.md`](docs/fidelity.md)
+- [`docs/access.md`](docs/access.md)
 - [`docs/uncertainty.md`](docs/uncertainty.md)
 - [`docs/terrain.md`](docs/terrain.md)
 - [`docs/forces.md`](docs/forces.md)
@@ -133,9 +146,75 @@ python examples/nonsingular_analysis.py --orbits 10
 python examples/frozen_orbit_search.py --quick
 python examples/targeting_stationkeeping.py --quick
 python examples/gravity_fidelity.py --quick
+python examples/groundtrack_access.py --quick
 ```
 
 Windows PowerShell users can activate the environment with `.venv\Scripts\Activate.ps1`.
+
+## Lunar ground track, site access and coverage
+
+A propagated Moon-centred trajectory can be converted into an explicit lunar body-fixed ground track:
+
+```python
+track = ground_track_history(
+    solution.t,
+    solution.y[:3].T,
+    body_fixed_from_inertial,
+    body_fixed_frame="MOON_ME_DE421",
+)
+```
+
+Longitude is east-positive and wrapped to `[0, 360)`, with a separate unwrapped history for seam-crossing analysis. At an exact lunar pole longitude is undefined and is not replaced with an arbitrary meridian.
+
+Surface access is computed from actual site-to-spacecraft geometry:
+
+```python
+site = LunarSurfaceSite(
+    "surface site",
+    latitude_deg=20.0,
+    longitude_deg_east=30.0,
+    frame="MOON_ME_DE421",
+)
+
+access = analyze_site_access(
+    solution.t,
+    solution.y[:3].T,
+    site,
+    body_fixed_from_inertial,
+    body_fixed_frame="MOON_ME_DE421",
+    minimum_elevation_deg=10.0,
+)
+```
+
+Each window reports start/end elapsed time, duration, maximum elevation, minimum slant range and closest-approach time. Multi-site analysis additionally exposes start-to-start revisit intervals and end-to-next-start outage intervals.
+
+When compatible terrain is supplied, individual-site analysis can sample the line of sight against the radial terrain surface. This is useful for local relief/horizon studies but is not a DSK triangular-mesh ray trace. Coverage grids use local-horizon/spherical-limb geometry and report dwell, access counts and revisit metrics for each configured grid point.
+
+Earth visibility can be driven by the same Moon-centred SPICE context used for the trajectory epoch:
+
+```python
+earth = analyze_earth_visibility(
+    solution.t,
+    solution.y[:3].T,
+    ephemeris.position_provider("EARTH"),
+)
+```
+
+The Earth and Moon are treated as finite apparent disks so partial and total lunar occultation of Earth are represented.
+
+The science example uses NASA-published Apollo 11 (`0.67409 N, 23.47298 E`) and Apollo 17 (`20.1911 N, 30.7769 E`) coordinates with NAIF's DE421 lunar Mean Earth frame workflow:
+
+```bash
+python -m pip install -e .[spice]
+python scripts/download_groundtrack_kernels.py
+python examples/groundtrack_access.py \
+  --kernel-dir data/spice/de421 \
+  --epoch-utc 2026-08-17T00:00:00 \
+  --duration-days 1 \
+  --altitude-km 100
+```
+
+Routine CI uses the offline `--quick` workflow; it does not download kernels. See [`docs/access.md`](docs/access.md).
 
 ## Gravity and force-model fidelity
 
@@ -410,9 +489,9 @@ The full record is [`results/force_model_spice_validation.json`](results/force_m
 
 ## Frame compatibility
 
-Frame identity is part of the model. The code does not silently equate `MOON_PA_DE421`, a DE430-compatible GRAIL principal-axes frame, `IAU_MOON`, or any other lunar frame.
+Frame identity is part of the model. The code does not silently equate `MOON_PA_DE421`, `MOON_ME_DE421`, a DE430-compatible GRAIL principal-axes frame, `IAU_MOON`, or any other lunar frame.
 
-A combined run should construct the gravity and terrain transformations required by those products separately. Ephemeris-driven perturbations likewise record their inertial frame and SPICE kernel context.
+A combined run should construct the gravity, terrain and surface-coordinate transformations required by those products separately. Ephemeris-driven perturbations and Earth-visibility analyses likewise record their inertial frame and SPICE kernel context.
 
 ## High-degree timing
 
@@ -428,6 +507,7 @@ For mission-specific timing and accuracy trade-offs, prefer the gravity-fidelity
 lunar-astrodynamics-simulation/
 ├── .github/workflows/ci.yml
 ├── docs/
+│   ├── access.md
 │   ├── fidelity.md
 │   ├── forces.md
 │   ├── frozen_orbit_search.md
@@ -444,6 +524,7 @@ lunar-astrodynamics-simulation/
 │   ├── gravity_fidelity.py
 │   ├── gravity_uncertainty.py
 │   ├── grgm1200a_gravity.py
+│   ├── groundtrack_access.py
 │   ├── harmonic_validation.py
 │   ├── j2_precession.py
 │   ├── nonsingular_analysis.py
@@ -457,11 +538,13 @@ lunar-astrodynamics-simulation/
 │   ├── download_force_model_kernels.py
 │   ├── download_grgm1200a.py
 │   ├── download_grgm1200a_clones.py
+│   ├── download_groundtrack_kernels.py
 │   ├── download_lola_pa_shape.py
 │   ├── prepare_lola_pa_grid.py
 │   ├── validate_lola_pa_reference.py
 │   └── validate_lola_pds_reference.py
 ├── src/lunar_astrodynamics/
+│   ├── access.py
 │   ├── analysis.py
 │   ├── constants.py
 │   ├── dynamics.py
@@ -488,6 +571,8 @@ A top-ranked search result is a numerical candidate under the stated model, epoc
 
 A harmonic truncation selected by the fidelity tools is only the lowest **tested** truncation that met the requested tolerances for the supplied position set or trajectory. The high-degree reference is itself a numerical model rather than truth, finite samples do not bound error everywhere, and runtime measurements depend on hardware/software. No universal altitude-to-degree sufficiency claim is made and the library does not automatically switch harmonic degree during propagation.
 
+A site-access result is a sampled geometric opportunity under the stated body-fixed frame, site coordinates, elevation mask and optional terrain model. It is not automatically a communications link or observation opportunity. Access-window boundaries, closest approach, dwell and revisit statistics depend on trajectory sampling. Terrain-aware LOS uses a sampled radial terrain grid, not a DSK mesh. The coverage aggregate is a configured grid-point statistic rather than an equal-area lunar surface fraction.
+
 Finite-difference sensitivity is a local numerical approximation whose reliability depends on perturbation size, integration tolerance, model smoothness and distance from events or active constraints. The repository records half/base/double step diagnostics but does not claim that this replaces independent sensitivity verification. The local differential corrector can fail because of ill-conditioning, local insensitivity, step-size sensitivity, impacts or nonlinear basin limits, and such failures are returned explicitly.
 
 The station-keeping simulator uses instantaneous ideal impulses at fixed threshold-check epochs. It does not model orbit-determination error, navigation covariance, maneuver execution error, finite burn duration, thrust/attitude limits, minimum impulse bit, maneuver windows, communications/operations constraints, missed burns, propulsion duty cycles or mass depletion. Its maneuver counts and delta-v totals are preliminary comparative estimates rather than operational budgets.
@@ -496,11 +581,11 @@ The prograde modified equinoctial convention does not cover the exact 180-degree
 
 High-fidelity lunar runs still require appropriate high-degree gravity, compatible lunar orientation/frame kernels, terrain resolution, gravity uncertainty treatment and a force model selected for the required prediction horizon. Earth and Sun are point-mass third bodies here. The current model does not include lunar tides/time-variable gravity, Earth oblateness as an extended perturber, relativity, other planetary third bodies, Earth radiation pressure, lunar albedo/thermal radiation or finite-thrust dynamics.
 
-SRP is a configurable cannonball model. It does not model spacecraft attitude, separate optical surfaces, articulation, self-shadowing or thermal reradiation. Lunar eclipse uses a spherical Moon and finite apparent solar disk; LOLA limb topography and solar limb darkening are excluded.
+SRP is a configurable cannonball model. It does not model spacecraft attitude, separate optical surfaces, articulation, self-shadowing or thermal reradiation. Lunar eclipse uses a spherical Moon and finite apparent solar disk; LOLA limb topography and solar limb darkening are excluded. Earth visibility likewise uses a spherical Moon and circular nominal Earth disk rather than lunar limb topography or an oblate terrestrial silhouette.
 
 The package does not construct the complete GRGM1200A covariance matrix internally. Terrain uncertainty, state covariance propagation and orbit determination are also not yet included.
 
-The repository does not bundle NASA gravity/terrain products or NAIF kernels. Kernel coverage, kernel provenance, frame selection, epoch, integration settings, search space, ranking policy, target definition, finite-difference settings, station-keeping thresholds, fidelity reference and fidelity tolerances remain caller-controlled parts of the numerical model.
+The repository does not bundle NASA gravity/terrain products or NAIF kernels. Kernel coverage, kernel provenance, frame selection, epoch, integration settings, search space, ranking policy, target definition, finite-difference settings, station-keeping thresholds, fidelity reference/tolerances, site coordinate provenance, elevation masks and coverage grids remain caller-controlled parts of the numerical model.
 
 ## Cite this repository
 
