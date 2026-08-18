@@ -252,18 +252,24 @@ Always preserve gravity-product, frame, kernel and terrain provenance with the r
 
 ## Scientific documentation
 
-- [`docs/mission_workflow.md`](docs/mission_workflow.md)
-- [`docs/model.md`](docs/model.md)
-- [`docs/forces.md`](docs/forces.md)
-- [`docs/terrain.md`](docs/terrain.md)
-- [`docs/orbital_analysis.md`](docs/orbital_analysis.md)
-- [`docs/frozen_orbit_search.md`](docs/frozen_orbit_search.md)
-- [`docs/targeting.md`](docs/targeting.md)
-- [`docs/fidelity.md`](docs/fidelity.md)
-- [`docs/access.md`](docs/access.md)
-- [`docs/uncertainty.md`](docs/uncertainty.md)
-- [`docs/reproducibility.md`](docs/reproducibility.md)
-- [`docs/independent_validation.md`](docs/independent_validation.md)
+Start with the [documentation guide](docs/README.md), which maps common research tasks to the appropriate specialist document.
+
+| Topic | When to use it | Documentation |
+|---|---|---|
+| Documentation guide | Start here if you are new to the package or unsure which interface/document to use. | [`docs/README.md`](docs/README.md) |
+| Mission workflow | Configure and run a complete reproducible lunar mission study from Python or TOML/CLI. | [`docs/mission_workflow.md`](docs/mission_workflow.md) |
+| Scientific conventions | Check units, frames, coordinates, altitude/clearance definitions, harmonic conventions and uncertainty interpretation. | [`docs/conventions.md`](docs/conventions.md) |
+| Gravity model | Configure GRAIL SHADR harmonics, degree/order truncation and gravity frames. | [`docs/model.md`](docs/model.md) |
+| Force models | Add Earth/Sun third bodies, SRP, eclipses and SPICE ephemerides. | [`docs/forces.md`](docs/forces.md) |
+| Terrain | Use LOLA terrain for clearance and impact analysis. | [`docs/terrain.md`](docs/terrain.md) |
+| Orbital analysis | Analyse eccentricity vectors, modified equinoctial elements and secular evolution. | [`docs/orbital_analysis.md`](docs/orbital_analysis.md) |
+| Frozen-orbit search | Search, rank and constrain low lunar stability/frozen-orbit candidates. | [`docs/frozen_orbit_search.md`](docs/frozen_orbit_search.md) |
+| Targeting | Run sensitivity, differential correction and preliminary station-keeping analysis. | [`docs/targeting.md`](docs/targeting.md) |
+| Fidelity | Select gravity degree/order from measured accuracy/runtime trade-offs. | [`docs/fidelity.md`](docs/fidelity.md) |
+| Access and coverage | Compute ground tracks, surface-site access, revisit, coverage and Earth visibility. | [`docs/access.md`](docs/access.md) |
+| Uncertainty | Propagate gravity-field uncertainty using sigma sampling or covariance-derived clones. | [`docs/uncertainty.md`](docs/uncertainty.md) |
+| Reproducibility | Record numerical settings, external data and provenance needed to reproduce a run. | [`docs/reproducibility.md`](docs/reproducibility.md) |
+| Independent validation | Reproduce the external scientific validation campaign and inspect residuals/limitations. | [`docs/independent_validation.md`](docs/independent_validation.md) |
 
 ## Intended use
 
