@@ -656,5 +656,22 @@
       ]
     }
   },
-  "prior_independent_validation": "results/independent_validation.json"
+  "prior_independent_validation": "results/independent_validation.json",
+  "python_test_matrix": {
+    "3.10": {
+      "passed": 173,
+      "failed": 0,
+      "duration_s": 7.63
+    },
+    "3.12": {
+      "passed": 173,
+      "failed": 0,
+      "duration_s": 7.51
+    },
+    "3.13": {
+      "passed": 173,
+      "failed": 0,
+      "duration_s": 7.44
+    }
+  }
 }
