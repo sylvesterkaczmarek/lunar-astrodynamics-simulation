@@ -1,12 +1,12 @@
 cff-version: 1.2.0
-message: "If you use or adapt this software, please cite it as below."
-title: "Lunar Astrodynamics Simulation"
+title: Lunar Astrodynamics Simulation
+message: If you use or adapt this software, please cite it using this metadata.
 type: software
 authors:
-  - family-names: "Kaczmarek"
-    given-names: "Sylvester"
-year: 2026
-license: MIT
-repository-code: "https://github.com/sylvesterkaczmarek/lunar-astrodynamics-simulation"
-url: "https://github.com/sylvesterkaczmarek/lunar-astrodynamics-simulation"
+  - family-names: Kaczmarek
+    given-names: Sylvester
+date-released: "2026-08-18"
 version: 0.4.0
+repository-code: https://github.com/sylvesterkaczmarek/lunar-astrodynamics-simulation
+url: https://github.com/sylvesterkaczmarek/lunar-astrodynamics-simulation
+license: MIT
