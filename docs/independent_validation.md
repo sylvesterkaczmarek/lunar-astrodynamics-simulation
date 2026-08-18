@@ -368,4 +368,4 @@ The campaign materially strengthens the scientific evidence for the implementati
 - independently implemented identical-force propagation stays within approximately `0.13 mm` over two hours;
 - an open-loop lunar propagation initialized from a real reconstructed LRO orbit stays within approximately `12.6 m` maximum position difference over the tested six-hour 600x600 arc, with only millimetric numerical-integration sensitivity.
 
-These results support research and preliminary mission-analysis use. They do not make the repository flight-certified, do not replace orbit determination, and do not demonstrate that omitted force models are negligible over arbitrary mission horizons.
+These results support research and preliminary mission-analysis use. They do not make the repository suitable for operational flight use and do not replace orbit determination, and do not demonstrate that omitted force models are negligible over arbitrary mission horizons.

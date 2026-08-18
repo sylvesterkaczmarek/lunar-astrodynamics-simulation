@@ -212,4 +212,4 @@ That mode deliberately labels its constant-rate orientation as a demonstration. 
 - The code does not model finite spacecraft dimensions, attitude-dependent collision geometry or landing-footprint contact.
 - The simple global clearance model should not replace specialised high-resolution landing-site DEMs for terminal descent or surface operations.
 
-These limitations are intentionally explicit so a terrain-aware result is not mistaken for a certified flight-clearance product.
+These limitations are intentionally explicit so a terrain-aware result is not mistaken for an operational flight-clearance product.

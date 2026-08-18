@@ -751,7 +751,7 @@ def _build_dynamics(config: MissionConfig, ephemeris: SpiceEphemeris | None, add
     gravity_frame = config.gravity.frame or config.spice.gravity_frame
     if not gravity_frame: raise ValueError("SHADR gravity requires gravity.frame or spice.gravity_frame")
     degree = config.gravity.degree
-    model = read_shadr(config.gravity.path, max_degree=degree, name=config.gravity.name or config.gravity.path.name, frame=gravity_frame)
+    model = read_shadr(config.gravity.path, name=config.gravity.name or config.gravity.path.name, frame=gravity_frame)
     degree = model.max_degree if degree is None else min(degree, model.max_degree)
     order = degree if config.gravity.order is None else min(config.gravity.order, degree)
     gravity_rotation = spice_rotation_provider(config.spice.inertial_frame, gravity_frame, et_offset_s=ephemeris.epoch_et_s)
@@ -865,8 +865,11 @@ def _gravity_uncertainty_models(context: MissionContext) -> tuple[SphericalHarmo
     uncertainty = _table(context.config.raw, "uncertainty")
     if not uncertainty: raise ValueError("uncertainty workflow requires an [uncertainty] table")
     mode = _string(uncertainty, "mode", "diagonal")
+    degree = context.dynamics.harmonic_degree if context.dynamics.harmonic_degree is not None else context.gravity_model.max_degree
+    order = context.dynamics.harmonic_order if context.dynamics.harmonic_order is not None else degree
+    nominal_for_uncertainty = context.gravity_model.truncated(degree, order)
     if mode == "diagonal":
-        return sample_independent_coefficient_uncertainty(context.gravity_model, seed=_integer(uncertainty, "seed", 20260818), count=_integer(uncertainty, "samples", 8), sigma_scale=_number(uncertainty, "sigma_scale", 1.0), assume_independent=_boolean(uncertainty, "assume_independent", False), include_mu=_boolean(uncertainty, "include_mu", False))
+        return sample_independent_coefficient_uncertainty(nominal_for_uncertainty, seed=_integer(uncertainty, "seed", 20260818), count=_integer(uncertainty, "samples", 8), sigma_scale=_number(uncertainty, "sigma_scale", 1.0), assume_independent=_boolean(uncertainty, "assume_independent", False), include_mu=_boolean(uncertainty, "include_mu", False))
     if mode == "clones":
         raw_paths = uncertainty.get("clone_paths", [])
         if not isinstance(raw_paths, Sequence) or isinstance(raw_paths, (str, bytes)) or not raw_paths: raise ValueError("clone uncertainty mode requires uncertainty.clone_paths")

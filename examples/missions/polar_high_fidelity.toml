@@ -115,9 +115,9 @@ sample_count = 49
 percentiles = [5.0, 50.0, 95.0]
 
 [fidelity]
-degrees = [2, 10, 20, 40, 60]
-reference_degree = 60
-reference_order = 60
+degrees = [2, 10, 20, 40, 60, 120]
+reference_degree = 120
+reference_order = 120
 benchmark_repetitions = 2
 acceleration_sample_stride = 6
 trajectory_duration_s = 3600.0

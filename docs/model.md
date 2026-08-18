@@ -194,6 +194,6 @@ See [`terrain.md`](terrain.md) for product provenance, interpolation rules and r
 - Finite-difference sensitivities are local numerical derivatives and can be unreliable near discontinuities, event topology changes or poor perturbation-size regimes despite the implemented step-sweep diagnostic.
 - Differential correction is a local solver and is not a global trajectory optimizer.
 - Spacecraft state covariance propagation, orbit determination and navigation-error modeling are not included.
-- High-degree synthesis is CPU/NumPy based and is not certified flight-dynamics software.
+- High-degree synthesis is CPU/NumPy based and is not intended for operational flight dynamics.
 
 These limitations keep the simulation from being mistaken for a complete flight-dynamics truth model.

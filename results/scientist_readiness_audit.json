@@ -1,0 +1,660 @@
+{
+  "validated_utc": "2026-08-18T06:18:40.803746+00:00",
+  "python_version": "3.12.13",
+  "test_suite": {
+    "passed": 173,
+    "failed": 0,
+    "duration_s": 9.17
+  },
+  "self_contained_workflow": {
+    "configuration": "examples/missions/polar_quick.toml",
+    "summary": {
+      "requested_duration_s": 10800.0,
+      "achieved_duration_s": 10800.0,
+      "minimum_altitude_m": 90813.00000000023,
+      "maximum_altitude_m": 110535.9024621502,
+      "minimum_terrain_clearance_m": null,
+      "minimum_periselene_altitude_m": 89503.19979115948,
+      "maximum_periselene_altitude_m": 91191.69121163222,
+      "periselene_peak_to_peak_m": 1688.4914204727393,
+      "minimum_aposelene_altitude_m": 109187.00000000047,
+      "maximum_aposelene_altitude_m": 110933.27871677512,
+      "aposelene_peak_to_peak_m": 1746.2787167746574,
+      "eccentricity_minimum": 0.0050000000000001155,
+      "eccentricity_maximum": 0.00572545229334454,
+      "eccentricity_linear_drift_over_span": 0.00011420777298583975,
+      "eccentricity_vector_linear_drift_norm": 0.00011429576937645616,
+      "maximum_orbital_plane_change_deg": 0.0,
+      "impact": false,
+      "impact_time_s": null,
+      "force_model_fidelity": {
+        "name": "GRGM1200A low-degree J2 approximation",
+        "fidelity": "central + J2",
+        "mu_m3_s2": 4902800115263.23,
+        "analysis_reference_radius_m": 1737400.0,
+        "collision_radius_m": 1737400.0,
+        "harmonic_degree": 2,
+        "harmonic_order": 0,
+        "parallel_safe": true,
+        "gravity_reference_radius_m": 1738000.0,
+        "j2": 0.000203224,
+        "j2_axis": "inertial z-axis"
+      }
+    }
+  },
+  "public_data_workflow": {
+    "configuration": "examples/missions/polar_high_fidelity.toml",
+    "summary": {
+      "requested_duration_s": 21600.0,
+      "achieved_duration_s": 21600.0,
+      "minimum_altitude_m": 90813.00000000023,
+      "maximum_altitude_m": 109611.90071591968,
+      "minimum_terrain_clearance_m": 88610.17775682872,
+      "minimum_periselene_altitude_m": 89726.50801594113,
+      "maximum_periselene_altitude_m": 91979.5433993619,
+      "periselene_peak_to_peak_m": 2253.0353834207635,
+      "minimum_aposelene_altitude_m": 108301.46753404965,
+      "maximum_aposelene_altitude_m": 110388.96473462996,
+      "aposelene_peak_to_peak_m": 2087.497200580314,
+      "eccentricity_minimum": 0.0045702950362288275,
+      "eccentricity_maximum": 0.0054153972035903405,
+      "eccentricity_linear_drift_over_span": -0.0003670200024647789,
+      "eccentricity_vector_linear_drift_norm": 0.000496893963287294,
+      "maximum_orbital_plane_change_deg": 0.10046698763402896,
+      "impact": false,
+      "impact_time_s": null,
+      "force_model_fidelity": {
+        "name": "GRGM900C n<=60 m<=60",
+        "fidelity": "spherical harmonics + perturbation forces",
+        "mu_m3_s2": 4902799967088.641,
+        "analysis_reference_radius_m": 1737400.0,
+        "collision_radius_m": 1737400.0,
+        "harmonic_degree": 60,
+        "harmonic_order": 60,
+        "parallel_safe": false,
+        "gravity_model": "GRGM900C",
+        "gravity_frame": "MOON_PA_DE421",
+        "gravity_reference_radius_m": 1738000.0,
+        "gravity_normalization": "4pi",
+        "additional_forces": [
+          {
+            "name": "Earth third-body gravity",
+            "type": "differential point-mass third-body gravity",
+            "gravitational_parameter_m3_s2": 398600435507000.0,
+            "position_provider": {
+              "source": "SPICE",
+              "epoch_et_s": 490079198.18377155,
+              "epoch_utc": "2015-07-13T17:05:30",
+              "inertial_frame": "J2000",
+              "observer": "MOON",
+              "aberration_correction": "NONE",
+              "kernels": [
+                {
+                  "path": "/home/runner/work/lunar-astrodynamics-simulation/lunar-astrodynamics-simulation/data/example_mission/naif0012.tls",
+                  "kind": "TEXT",
+                  "source": ""
+                },
+                {
+                  "path": "/home/runner/work/lunar-astrodynamics-simulation/lunar-astrodynamics-simulation/data/example_mission/de421.bsp",
+                  "kind": "SPK",
+                  "source": ""
+                },
+                {
+                  "path": "/home/runner/work/lunar-astrodynamics-simulation/lunar-astrodynamics-simulation/data/example_mission/moon_pa_de421_1900-2050.bpc",
+                  "kind": "PCK",
+                  "source": ""
+                },
+                {
+                  "path": "/home/runner/work/lunar-astrodynamics-simulation/lunar-astrodynamics-simulation/data/example_mission/moon_080317.tf",
+                  "kind": "TEXT",
+                  "source": ""
+                }
+              ],
+              "target": "EARTH"
+            }
+          },
+          {
+            "name": "Sun third-body gravity",
+            "type": "differential point-mass third-body gravity",
+            "gravitational_parameter_m3_s2": 1.3271244004127942e+20,
+            "position_provider": {
+              "source": "SPICE",
+              "epoch_et_s": 490079198.18377155,
+              "epoch_utc": "2015-07-13T17:05:30",
+              "inertial_frame": "J2000",
+              "observer": "MOON",
+              "aberration_correction": "NONE",
+              "kernels": [
+                {
+                  "path": "/home/runner/work/lunar-astrodynamics-simulation/lunar-astrodynamics-simulation/data/example_mission/naif0012.tls",
+                  "kind": "TEXT",
+                  "source": ""
+                },
+                {
+                  "path": "/home/runner/work/lunar-astrodynamics-simulation/lunar-astrodynamics-simulation/data/example_mission/de421.bsp",
+                  "kind": "SPK",
+                  "source": ""
+                },
+                {
+                  "path": "/home/runner/work/lunar-astrodynamics-simulation/lunar-astrodynamics-simulation/data/example_mission/moon_pa_de421_1900-2050.bpc",
+                  "kind": "PCK",
+                  "source": ""
+                },
+                {
+                  "path": "/home/runner/work/lunar-astrodynamics-simulation/lunar-astrodynamics-simulation/data/example_mission/moon_080317.tf",
+                  "kind": "TEXT",
+                  "source": ""
+                }
+              ],
+              "target": "SUN"
+            }
+          },
+          {
+            "name": "solar radiation pressure",
+            "type": "cannonball solar radiation pressure",
+            "spacecraft_mass_kg": 250.0,
+            "illuminated_area_m2": 4.0,
+            "reflectivity_coefficient": 1.4,
+            "pressure_1_au_n_m2": 4.56e-06,
+            "astronomical_unit_m": 149597870700.0,
+            "sun_radius_m": 695700000.0,
+            "moon_radius_m": 1737400.0,
+            "include_lunar_shadow": true,
+            "shadow_model": "finite apparent Sun/Moon disk overlap",
+            "position_provider": {
+              "source": "SPICE",
+              "epoch_et_s": 490079198.18377155,
+              "epoch_utc": "2015-07-13T17:05:30",
+              "inertial_frame": "J2000",
+              "observer": "MOON",
+              "aberration_correction": "NONE",
+              "kernels": [
+                {
+                  "path": "/home/runner/work/lunar-astrodynamics-simulation/lunar-astrodynamics-simulation/data/example_mission/naif0012.tls",
+                  "kind": "TEXT",
+                  "source": ""
+                },
+                {
+                  "path": "/home/runner/work/lunar-astrodynamics-simulation/lunar-astrodynamics-simulation/data/example_mission/de421.bsp",
+                  "kind": "SPK",
+                  "source": ""
+                },
+                {
+                  "path": "/home/runner/work/lunar-astrodynamics-simulation/lunar-astrodynamics-simulation/data/example_mission/moon_pa_de421_1900-2050.bpc",
+                  "kind": "PCK",
+                  "source": ""
+                },
+                {
+                  "path": "/home/runner/work/lunar-astrodynamics-simulation/lunar-astrodynamics-simulation/data/example_mission/moon_080317.tf",
+                  "kind": "TEXT",
+                  "source": ""
+                }
+              ],
+              "target": "SUN"
+            }
+          }
+        ]
+      }
+    },
+    "dynamics": {
+      "name": "GRGM900C n<=60 m<=60",
+      "fidelity": "spherical harmonics + perturbation forces",
+      "mu_m3_s2": 4902799967088.641,
+      "analysis_reference_radius_m": 1737400.0,
+      "collision_radius_m": 1737400.0,
+      "harmonic_degree": 60,
+      "harmonic_order": 60,
+      "parallel_safe": false,
+      "gravity_model": "GRGM900C",
+      "gravity_frame": "MOON_PA_DE421",
+      "gravity_reference_radius_m": 1738000.0,
+      "gravity_normalization": "4pi",
+      "additional_forces": [
+        {
+          "name": "Earth third-body gravity",
+          "type": "differential point-mass third-body gravity",
+          "gravitational_parameter_m3_s2": 398600435507000.0,
+          "position_provider": {
+            "source": "SPICE",
+            "epoch_et_s": 490079198.18377155,
+            "epoch_utc": "2015-07-13T17:05:30",
+            "inertial_frame": "J2000",
+            "observer": "MOON",
+            "aberration_correction": "NONE",
+            "kernels": [
+              {
+                "path": "/home/runner/work/lunar-astrodynamics-simulation/lunar-astrodynamics-simulation/data/example_mission/naif0012.tls",
+                "kind": "TEXT",
+                "source": ""
+              },
+              {
+                "path": "/home/runner/work/lunar-astrodynamics-simulation/lunar-astrodynamics-simulation/data/example_mission/de421.bsp",
+                "kind": "SPK",
+                "source": ""
+              },
+              {
+                "path": "/home/runner/work/lunar-astrodynamics-simulation/lunar-astrodynamics-simulation/data/example_mission/moon_pa_de421_1900-2050.bpc",
+                "kind": "PCK",
+                "source": ""
+              },
+              {
+                "path": "/home/runner/work/lunar-astrodynamics-simulation/lunar-astrodynamics-simulation/data/example_mission/moon_080317.tf",
+                "kind": "TEXT",
+                "source": ""
+              }
+            ],
+            "target": "EARTH"
+          }
+        },
+        {
+          "name": "Sun third-body gravity",
+          "type": "differential point-mass third-body gravity",
+          "gravitational_parameter_m3_s2": 1.3271244004127942e+20,
+          "position_provider": {
+            "source": "SPICE",
+            "epoch_et_s": 490079198.18377155,
+            "epoch_utc": "2015-07-13T17:05:30",
+            "inertial_frame": "J2000",
+            "observer": "MOON",
+            "aberration_correction": "NONE",
+            "kernels": [
+              {
+                "path": "/home/runner/work/lunar-astrodynamics-simulation/lunar-astrodynamics-simulation/data/example_mission/naif0012.tls",
+                "kind": "TEXT",
+                "source": ""
+              },
+              {
+                "path": "/home/runner/work/lunar-astrodynamics-simulation/lunar-astrodynamics-simulation/data/example_mission/de421.bsp",
+                "kind": "SPK",
+                "source": ""
+              },
+              {
+                "path": "/home/runner/work/lunar-astrodynamics-simulation/lunar-astrodynamics-simulation/data/example_mission/moon_pa_de421_1900-2050.bpc",
+                "kind": "PCK",
+                "source": ""
+              },
+              {
+                "path": "/home/runner/work/lunar-astrodynamics-simulation/lunar-astrodynamics-simulation/data/example_mission/moon_080317.tf",
+                "kind": "TEXT",
+                "source": ""
+              }
+            ],
+            "target": "SUN"
+          }
+        },
+        {
+          "name": "solar radiation pressure",
+          "type": "cannonball solar radiation pressure",
+          "spacecraft_mass_kg": 250.0,
+          "illuminated_area_m2": 4.0,
+          "reflectivity_coefficient": 1.4,
+          "pressure_1_au_n_m2": 4.56e-06,
+          "astronomical_unit_m": 149597870700.0,
+          "sun_radius_m": 695700000.0,
+          "moon_radius_m": 1737400.0,
+          "include_lunar_shadow": true,
+          "shadow_model": "finite apparent Sun/Moon disk overlap",
+          "position_provider": {
+            "source": "SPICE",
+            "epoch_et_s": 490079198.18377155,
+            "epoch_utc": "2015-07-13T17:05:30",
+            "inertial_frame": "J2000",
+            "observer": "MOON",
+            "aberration_correction": "NONE",
+            "kernels": [
+              {
+                "path": "/home/runner/work/lunar-astrodynamics-simulation/lunar-astrodynamics-simulation/data/example_mission/naif0012.tls",
+                "kind": "TEXT",
+                "source": ""
+              },
+              {
+                "path": "/home/runner/work/lunar-astrodynamics-simulation/lunar-astrodynamics-simulation/data/example_mission/de421.bsp",
+                "kind": "SPK",
+                "source": ""
+              },
+              {
+                "path": "/home/runner/work/lunar-astrodynamics-simulation/lunar-astrodynamics-simulation/data/example_mission/moon_pa_de421_1900-2050.bpc",
+                "kind": "PCK",
+                "source": ""
+              },
+              {
+                "path": "/home/runner/work/lunar-astrodynamics-simulation/lunar-astrodynamics-simulation/data/example_mission/moon_080317.tf",
+                "kind": "TEXT",
+                "source": ""
+              }
+            ],
+            "target": "SUN"
+          }
+        }
+      ]
+    },
+    "surface_frame": "MOON_ME_DE421",
+    "terrain": {
+      "name": "LDEM_4",
+      "frame": "MOON_ME_DE421",
+      "reference_radius_m": 1737400.0,
+      "source": "/home/runner/work/lunar-astrodynamics-simulation/lunar-astrodynamics-simulation/data/example_mission/LDEM_4.IMG"
+    },
+    "site_access": {
+      "body_fixed_frame": "MOON_ME_DE421",
+      "minimum_elevation_deg": 10.0,
+      "sites": [
+        {
+          "site": {
+            "name": "Apollo 11 Tranquility Base",
+            "latitude_deg": 0.67409,
+            "longitude_deg_east": 23.47298,
+            "elevation_m": -1921.4577350752,
+            "frame": "MOON_ME_DE421",
+            "reference_radius_m": 1737400.0,
+            "coordinate_source": "NASA Apollo 11 Lunar Surface Journal"
+          },
+          "minimum_elevation_deg": 10.0,
+          "terrain_aware": false,
+          "windows": [],
+          "total_access_time_s": 0.0,
+          "access_fraction": 0.0,
+          "revisit_intervals_s": [],
+          "outage_intervals_s": [],
+          "maximum_elevation_deg": null,
+          "minimum_slant_range_m": null,
+          "observation_count": 73
+        },
+        {
+          "site": {
+            "name": "Apollo 17 Taurus-Littrow",
+            "latitude_deg": 20.1911,
+            "longitude_deg_east": 30.7769,
+            "elevation_m": -2368.8099236000044,
+            "frame": "MOON_ME_DE421",
+            "reference_radius_m": 1737400.0,
+            "coordinate_source": "NASA Science Taurus-Littrow Valley resource"
+          },
+          "minimum_elevation_deg": 10.0,
+          "terrain_aware": false,
+          "windows": [],
+          "total_access_time_s": 0.0,
+          "access_fraction": 0.0,
+          "revisit_intervals_s": [],
+          "outage_intervals_s": [],
+          "maximum_elevation_deg": null,
+          "minimum_slant_range_m": null,
+          "observation_count": 73
+        }
+      ]
+    },
+    "coverage": {
+      "covered_fraction": 0.0,
+      "mean_dwell_time_s": 0.0,
+      "maximum_dwell_time_s": 0.0
+    },
+    "earth_visibility": {
+      "visible_time_fraction": 0.7361111111109171,
+      "minimum_visible_fraction": 1e-12
+    },
+    "best_search_candidate": {
+      "candidate_id": "C000008",
+      "rank": 1,
+      "parameters": {
+        "semi_major_axis_m": 1827400.0,
+        "semi_major_axis_altitude_m": 90000.0,
+        "eccentricity": 0.01,
+        "inclination_rad": 1.4835298641951802,
+        "inclination_deg": 85.0,
+        "raan_rad": 0.47123889803846897,
+        "raan_deg": 27.0,
+        "argument_of_periapsis_rad": 4.241150082346221,
+        "argument_of_periapsis_deg": 243.0,
+        "longitude_of_periapsis_rad": 4.71238898038469,
+        "longitude_of_periapsis_deg": 270.0,
+        "initial_anomaly_rad": 0.0,
+        "initial_anomaly_deg": 0.0,
+        "periapsis_parameterization": "longitude_of_periapsis"
+      },
+      "initial_state": [
+        -668025.6708398474,
+        -498051.8004625903,
+        -1605809.139042042,
+        1343.1589406670078,
+        610.9036264737184,
+        -748.237305570921
+      ],
+      "metrics": {
+        "duration_s": 10800.0,
+        "impact_free_lifetime_s": 10800.0,
+        "survived_duration_fraction": 1.0,
+        "impacted": false,
+        "impact_time_s": null,
+        "minimum_reference_altitude_m": 71726.0,
+        "maximum_reference_altitude_m": 108422.4850330432,
+        "semi_major_axis_peak_to_peak_m": 1200.217793327989,
+        "periselene_altitude_min_m": 70609.5090732919,
+        "periselene_altitude_max_m": 72740.16447095945,
+        "periselene_altitude_peak_to_peak_m": 2130.6553976675496,
+        "aposelene_altitude_min_m": 107536.15968804993,
+        "aposelene_altitude_max_m": 108920.75108778477,
+        "aposelene_altitude_peak_to_peak_m": 1384.5913997348398,
+        "eccentricity_minimum": 0.009730207704654235,
+        "eccentricity_maximum": 0.010303070525407874,
+        "eccentricity_peak_to_peak": 0.000572862820753639,
+        "eccentricity_vector_final_change_norm": 0.0001229935941850758,
+        "eccentricity_vector_linear_drift_norm": 0.0001862982679684849,
+        "eccentricity_vector_detrended_max_radius": 0.0003518539838604659,
+        "apsidal_direction_defined_fraction": 1.0,
+        "apsidal_direction_max_change_rad": 0.023910389560167992,
+        "orbital_plane_final_change_rad": 0.0007887807657353339,
+        "orbital_plane_max_change_rad": 0.0007887807657353339,
+        "minimum_terrain_clearance_m": 70587.30640415335
+      },
+      "uncertainty_metrics": [],
+      "uncertainty_summary": null,
+      "passed_constraints": true,
+      "constraint_violations": [],
+      "ranking": {
+        "normalised_terms": {
+          "periselene_spread": 0.21306553976675496,
+          "aposelene_spread": 0.13845913997348397,
+          "eccentricity_vector_drift": 0.1862982679684849,
+          "eccentricity_variation": 0.572862820753639,
+          "plane_change": 0.04519380883773193,
+          "lifetime_shortfall": 0.0,
+          "apsidal_change": 0.04566548027704303
+        },
+        "weighted_contributions": {
+          "periselene_spread": 0.639196619300265,
+          "aposelene_spread": 0.13845913997348397,
+          "eccentricity_vector_drift": 0.5588948039054547,
+          "eccentricity_variation": 0.572862820753639,
+          "plane_change": 0.04519380883773193,
+          "lifetime_shortfall": 0.0,
+          "apsidal_change": 0.04566548027704303
+        },
+        "applicable_weight_sum": 16.0,
+        "penalty": 0.1250170420654761
+      }
+    },
+    "uncertainty": {
+      "impact_fraction": 0.0,
+      "percentiles": {
+        "minimum_altitude_m": {
+          "5.0": 90813.00000000023,
+          "50.0": 90813.00000000023,
+          "95.0": 90813.00000000023
+        },
+        "maximum_altitude_m": {
+          "5.0": 109626.28958018108,
+          "50.0": 109626.2900416851,
+          "95.0": 109626.29030623431
+        },
+        "minimum_osculating_periselene_altitude_m": {
+          "5.0": 89733.86515557836,
+          "50.0": 89733.86535442015,
+          "95.0": 89733.86591826324
+        },
+        "maximum_osculating_aposelene_altitude_m": {
+          "5.0": 110387.79164103104,
+          "50.0": 110387.79217790137,
+          "95.0": 110387.79225618605
+        },
+        "maximum_eccentricity": {
+          "5.0": 0.005413686575437192,
+          "50.0": 0.005413686908023576,
+          "95.0": 0.005413686925960197
+        },
+        "final_eccentricity": {
+          "5.0": 0.005413686575437192,
+          "50.0": 0.005413686908023576,
+          "95.0": 0.005413686925960197
+        },
+        "lifetime_s": {
+          "5.0": 3600.0,
+          "50.0": 3600.0,
+          "95.0": 3600.0
+        }
+      }
+    },
+    "fidelity": {
+      "reference": {
+        "degree": 120,
+        "order": 120,
+        "label": "120x120"
+      },
+      "acceleration_selection": {
+        "selected_truncation": {
+          "degree": 40,
+          "order": 40,
+          "label": "40x40"
+        },
+        "satisfied": true,
+        "reason": "lowest tested truncation satisfying the requested tolerances over the supplied samples/trajectory",
+        "evaluated_truncations": [
+          {
+            "degree": 2,
+            "order": 2,
+            "label": "2x2"
+          },
+          {
+            "degree": 10,
+            "order": 10,
+            "label": "10x10"
+          },
+          {
+            "degree": 20,
+            "order": 20,
+            "label": "20x20"
+          },
+          {
+            "degree": 40,
+            "order": 40,
+            "label": "40x40"
+          },
+          {
+            "degree": 60,
+            "order": 60,
+            "label": "60x60"
+          },
+          {
+            "degree": 120,
+            "order": 120,
+            "label": "120x120"
+          }
+        ]
+      },
+      "trajectory_selection": {
+        "selected_truncation": {
+          "degree": 10,
+          "order": 10,
+          "label": "10x10"
+        },
+        "satisfied": true,
+        "reason": "lowest tested truncation satisfying the requested tolerances over the supplied samples/trajectory",
+        "evaluated_truncations": [
+          {
+            "degree": 2,
+            "order": 2,
+            "label": "2x2"
+          },
+          {
+            "degree": 10,
+            "order": 10,
+            "label": "10x10"
+          },
+          {
+            "degree": 20,
+            "order": 20,
+            "label": "20x20"
+          },
+          {
+            "degree": 40,
+            "order": 40,
+            "label": "40x40"
+          },
+          {
+            "degree": 60,
+            "order": 60,
+            "label": "60x60"
+          },
+          {
+            "degree": 120,
+            "order": 120,
+            "label": "120x120"
+          }
+        ]
+      }
+    },
+    "external_data_manifest": {
+      "purpose": "official public data for examples/missions/polar_high_fidelity.toml",
+      "files": [
+        {
+          "filename": "naif0012.tls",
+          "source_url": "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/lsk/naif0012.tls",
+          "size_bytes": 5257,
+          "sha256": "678e32bdb5a744117a467cd9601cd6b373f0e9bc9bbde1371d5eee39600a039b"
+        },
+        {
+          "filename": "de421.bsp",
+          "source_url": "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/a_old_versions/de421.bsp",
+          "size_bytes": 16790528,
+          "sha256": "08b20db2ae22488650641c5a9033e5bfda4b1c4b440cfeaf20f621cfa18ecdb3"
+        },
+        {
+          "filename": "moon_pa_de421_1900-2050.bpc",
+          "source_url": "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/moon_pa_de421_1900-2050.bpc",
+          "size_bytes": 1770496,
+          "sha256": "656f90616403d75a75f0cd6c8830fc5b44f8cb4facb5ccb8915e752b397520cf"
+        },
+        {
+          "filename": "moon_080317.tf",
+          "source_url": "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/fk/satellites/moon_080317.tf",
+          "size_bytes": 21437,
+          "sha256": "78732477b96f9863e7b0d65bcee3c22b8707ca5ed0db56d1173319cb2e8c7993"
+        },
+        {
+          "filename": "gggrx_0900c_sha.tab",
+          "source_url": "https://pds-geosciences.wustl.edu/grail/grail-l-lgrs-5-rdr-v1/grail_1001/shadr/gggrx_0900c_sha.tab",
+          "size_bytes": 49574944,
+          "sha256": "dab6ab06e0d3d7cbc594ea4bd03151a65534ed5fdf4f147ae38662428c04454e"
+        },
+        {
+          "filename": "gggrx_0900c_sha.lbl",
+          "source_url": "https://pds-geosciences.wustl.edu/grail/grail-l-lgrs-5-rdr-v1/grail_1001/shadr/gggrx_0900c_sha.lbl",
+          "size_bytes": 10828,
+          "sha256": "acc623e4b42a19f8feba1e7bda5189e984aa907491db12dede64bd426a1681c0"
+        },
+        {
+          "filename": "LDEM_4.IMG",
+          "source_url": "https://imbrium.mit.edu/DATA/LOLA_GDR/CYLINDRICAL/IMG/LDEM_4.IMG",
+          "size_bytes": 2073600,
+          "sha256": "972d66d7f330abca62abc21aae270661516c00dd1a881ec102b94df9563656b5"
+        },
+        {
+          "filename": "LDEM_4.LBL",
+          "source_url": "https://imbrium.mit.edu/DATA/LOLA_GDR/CYLINDRICAL/IMG/LDEM_4.LBL",
+          "size_bytes": 5107,
+          "sha256": "b5a197b4d417e3b5e0e84f8fe15f9a1d2203b8eb5d7213236c0ffbc86e940cc6"
+        }
+      ]
+    }
+  },
+  "prior_independent_validation": "results/independent_validation.json"
+}

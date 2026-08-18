@@ -87,6 +87,8 @@ argument_of_periapsis_deg = 270.0
 true_anomaly_deg = 0.0
 ```
 
+For SHADR missions, the full coefficient field is retained in the mission context even when the nominal propagation uses a lower configured degree/order. This allows the fidelity workflow to compare that propagation choice with a higher-degree reference from the same gravity product.
+
 The underlying classical-element singularity policy is unchanged. Downstream trajectory analysis uses the nonsingular eccentricity-vector and modified-equinoctial representations already implemented by the library.
 
 ## Gravity models

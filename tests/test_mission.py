@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
 
+import lunar_astrodynamics.mission as mission_module
+from lunar_astrodynamics import SphericalHarmonicModel
 from lunar_astrodynamics.cli import main as cli_main
 from lunar_astrodynamics.mission import (
     build_mission_context,
@@ -162,3 +165,36 @@ frame = "MOON_PA_DE421"
     )
     loaded = load_mission_config(config)
     assert loaded.gravity.path == (tmp_path / "gravity.tab").resolve()
+
+
+def test_shadr_mission_retains_full_model_for_fidelity(monkeypatch, tmp_path: Path) -> None:
+    c = np.zeros((5, 5))
+    s = np.zeros_like(c)
+    c[0, 0] = 1.0
+    c[2, 0] = -9.0e-5
+    c[4, 2] = 1.0e-7
+    full_model = SphericalHarmonicModel(
+        4.9028e12, 1.738e6, c, s, name="full synthetic field", frame="MOON_PA_DE421"
+    )
+    monkeypatch.setattr(mission_module, "read_shadr", lambda *args, **kwargs: full_model)
+    monkeypatch.setattr(
+        mission_module,
+        "spice_rotation_provider",
+        lambda *args, **kwargs: (lambda _time_s: np.eye(3)),
+    )
+    mapping = _mapping()
+    mapping["gravity"] = {
+        "model": "shadr",
+        "path": str(tmp_path / "gravity.tab"),
+        "degree": 2,
+        "order": 2,
+        "frame": "MOON_PA_DE421",
+    }
+    config = mission_config_from_mapping(mapping)
+    dynamics, retained = mission_module._build_dynamics(
+        config, SimpleNamespace(epoch_et_s=0.0), ()
+    )
+    assert retained is full_model
+    assert retained.max_degree == 4
+    assert dynamics.harmonic_degree == 2
+    assert dynamics.harmonic_order == 2

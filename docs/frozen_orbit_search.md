@@ -322,4 +322,4 @@ A numerically favourable candidate means only that it performed well under the s
 
 A short screening propagation can miss long-period instability. A coarse parameter grid can miss a narrow stable basin. A gravity-only ensemble omits state/OD, maneuver, attitude, SRP-parameter, ephemeris, terrain and other uncertainty sources.
 
-The output is therefore a set of numerical candidate orbits for further study, not a flight-certified orbit and not a guarantee of stationkeeping-free operation. Promising candidates should be re-propagated for substantially longer horizons at higher force-model fidelity, through appropriate uncertainty ensembles, with mission-specific navigation and maneuver constraints before operational use.
+The output is therefore a set of numerical candidate orbits for further study, not an operationally qualified orbit and not a guarantee of stationkeeping-free operation. Promising candidates should be re-propagated for substantially longer horizons at higher force-model fidelity, through appropriate uncertainty ensembles, with mission-specific navigation and maneuver constraints before operational use.

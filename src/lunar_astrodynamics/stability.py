@@ -420,17 +420,15 @@ class StabilitySearchSpace:
 
 
 def default_low_lunar_search_space() -> StabilitySearchSpace:
-    """Broad mission-agnostic coarse screen around low, near-polar lunar orbits."""
-    return StabilitySearchSpace(
-        semi_major_axis_altitudes_m=(60_000.0, 90_000.0, 120_000.0, 150_000.0),
-        semi_major_axes_m=None,
-        eccentricities=(0.005, 0.02, 0.035),
-        inclinations_rad=tuple(np.deg2rad([80.0, 85.0, 90.0, 95.0, 100.0])),
-        raan_rad=tuple(np.deg2rad([0.0, 90.0, 180.0, 270.0])),
-        periapsis_rad=tuple(np.deg2rad([0.0, 90.0, 180.0, 270.0])),
-        initial_anomaly_rad=(0.0,),
-        periapsis_parameterization="longitude_of_periapsis",
-    )
+    """Return the canonical surface-safe default search grid.
+
+    This compatibility wrapper delegates to :mod:`search_defaults` so direct
+    imports from ``lunar_astrodynamics.stability`` cannot diverge from the
+    package-level default.
+    """
+    from .search_defaults import default_low_lunar_search_space as canonical_default
+
+    return canonical_default()
 
 
 @dataclass(frozen=True)

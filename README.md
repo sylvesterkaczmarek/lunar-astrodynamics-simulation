@@ -230,7 +230,7 @@ See [`docs/independent_validation.md`](docs/independent_validation.md) and [`res
 
 ## Tests
 
-Before the mission-workflow layer, the repository contained **163 tests** across gravity, uncertainty, terrain, force models, frames, orbital mathematics, stability search, targeting, fidelity and access/coverage. The workflow layer adds configuration, orchestration and CLI tests on top of that suite.
+The repository contains **173 automated tests** across gravity, uncertainty, terrain, force models, frames, orbital mathematics, stability search, targeting, fidelity, access/coverage, configuration, orchestration and the CLI.
 
 GitHub Actions runs the test matrix on Python 3.10, 3.12 and 3.13. The Python 3.12 job also runs deterministic scientific smoke examples, including the configured mission workflow.
 

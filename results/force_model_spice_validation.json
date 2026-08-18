@@ -93,5 +93,5 @@
     "tests": 107,
     "python_versions": ["3.10", "3.12", "3.13"]
   },
-  "interpretation": "This is a reproducible force-isolation validation using low-degree lunar J2 in IAU_MOON plus DE440 Earth/Sun ephemerides. It is not a mission-grade truth model. Higher-fidelity lunar gravity should use GRAIL coefficients and a compatible principal-axes frame."
+  "interpretation": "This is a reproducible force-isolation validation using low-degree lunar J2 in IAU_MOON plus DE440 Earth/Sun ephemerides. It is not an operational truth model. Higher-fidelity lunar gravity should use GRAIL coefficients and a compatible principal-axes frame."
 }

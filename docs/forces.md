@@ -208,7 +208,7 @@ The complete recorded result is in [`../results/force_model_spice_validation.jso
 
 ## Excluded perturbations
 
-Adding Earth, Sun and SRP does not make the propagator a mission-grade truth model. Important effects that may matter depending on mission duration, orbit and accuracy target include:
+Adding Earth, Sun and SRP does not make the propagator an operational truth model. Important effects that may matter depending on mission duration, orbit and accuracy target include:
 
 - high-degree lunar gravity if a run uses only central/J2 gravity;
 - gravity-field uncertainty and clone-field dispersion;

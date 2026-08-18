@@ -14,7 +14,7 @@ The tools are intended for:
 - rough impulsive station-keeping frequency and delta-v studies;
 - comparison of candidate robustness under different force-model fidelities.
 
-They are not flight guidance, navigation or certified maneuver-planning software.
+They are not intended for operational guidance, navigation or maneuver planning.
 
 ## Finite-difference sensitivity
 
