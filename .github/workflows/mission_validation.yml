@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   validate:
-    if: github.event.head_commit.message != 'Record mission workflow validation'
+    if: github.event.head_commit.message != 'Record full mission workflow validation'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,28 +19,58 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install
-        run: python -m pip install -e .[dev]
-      - name: Run validation and record output
+        run: python -m pip install -e .[dev,spice]
+      - name: Download official example data
+        run: python scripts/download_example_mission_data.py
+      - name: Run complete public data workflow and record output
         shell: bash
         run: |
           set +e
-          python -m pytest > /tmp/pytest.txt 2>&1
-          pytest_status=$?
-          lunar-mission all examples/missions/polar_quick.toml --output-dir /tmp/configured-mission > /tmp/mission.txt 2>&1
+          lunar-mission all examples/missions/polar_high_fidelity.toml --output-dir /tmp/full-mission > /tmp/full-mission.log 2>&1
           mission_status=$?
           set -e
           {
-            echo "pytest_status=$pytest_status"
-            cat /tmp/pytest.txt
-            echo
             echo "mission_status=$mission_status"
-            cat /tmp/mission.txt
-          } > results/mission_workflow_validation.txt
+            cat /tmp/full-mission.log
+            if [ "$mission_status" -eq 0 ]; then
+              python - <<'PY'
+import json
+from pathlib import Path
+root = Path('/tmp/full-mission')
+mission = json.loads((root / 'mission.json').read_text())
+access = json.loads((root / 'access.json').read_text())
+search = json.loads((root / 'frozen_orbit_search.json').read_text())
+uncertainty = json.loads((root / 'gravity_uncertainty.json').read_text())
+fidelity = json.loads((root / 'fidelity.json').read_text())
+print('\nstructured_metrics')
+print(json.dumps({
+    'summary': mission['summary'],
+    'site_access': access['site_access'],
+    'coverage': None if access['coverage'] is None else {
+        'covered_fraction': access['coverage']['covered_fraction'],
+        'mean_dwell_time_s': access['coverage']['mean_dwell_time_s'],
+        'maximum_dwell_time_s': access['coverage']['maximum_dwell_time_s'],
+    },
+    'earth_visibility': None if access['earth_visibility'] is None else {
+        'visible_time_fraction': access['earth_visibility']['visible_time_fraction'],
+        'minimum_visible_fraction': access['earth_visibility']['minimum_visible_fraction'],
+    },
+    'search_best': search['search']['candidates'][0] if 'candidates' in search['search'] else search['search']['refined']['candidates'][0],
+    'uncertainty': {
+        'impact_fraction': uncertainty['impact_fraction'],
+        'percentiles': uncertainty['percentiles'],
+    },
+    'fidelity': {
+        'acceleration_selection': fidelity['acceleration_selection'],
+        'trajectory_selection': fidelity['trajectory_selection'],
+    },
+}, indent=2))
+PY
+            fi
+          } > results/mission_workflow_full_validation.txt
           git config user.name "Repository validation"
           git config user.email "validation@users.noreply.github.com"
-          git add results/mission_workflow_validation.txt
-          git commit -m "Record mission workflow validation"
+          git add results/mission_workflow_full_validation.txt
+          git commit -m "Record full mission workflow validation"
           git push origin HEAD:main
-          if [ "$pytest_status" -ne 0 ] || [ "$mission_status" -ne 0 ]; then
-            exit 1
-          fi
+          exit "$mission_status"
