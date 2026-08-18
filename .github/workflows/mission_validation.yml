@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   validate:
-    if: github.event.head_commit.message != 'Record full mission workflow validation'
+    if: github.event.head_commit.message != 'Record diagnostic mission workflow validation'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -20,57 +20,50 @@ jobs:
           python-version: '3.12'
       - name: Install
         run: python -m pip install -e .[dev,spice]
-      - name: Download official example data
-        run: python scripts/download_example_mission_data.py
-      - name: Run complete public data workflow and record output
+      - name: Run and record each public data workflow
         shell: bash
         run: |
           set +e
-          lunar-mission all examples/missions/polar_high_fidelity.toml --output-dir /tmp/full-mission > /tmp/full-mission.log 2>&1
-          mission_status=$?
+          python scripts/download_example_mission_data.py > /tmp/download.log 2>&1
+          download_status=$?
+
+          analyse_status=99
+          access_status=99
+          search_status=99
+          uncertainty_status=99
+          fidelity_status=99
+
+          if [ "$download_status" -eq 0 ]; then
+            lunar-mission analyse examples/missions/polar_high_fidelity.toml --output-dir /tmp/full-mission > /tmp/analyse.log 2>&1
+            analyse_status=$?
+            lunar-mission access examples/missions/polar_high_fidelity.toml --output-dir /tmp/full-access > /tmp/access.log 2>&1
+            access_status=$?
+            lunar-mission search examples/missions/polar_high_fidelity.toml --output-dir /tmp/full-search > /tmp/search.log 2>&1
+            search_status=$?
+            lunar-mission uncertainty examples/missions/polar_high_fidelity.toml --output-dir /tmp/full-uncertainty > /tmp/uncertainty.log 2>&1
+            uncertainty_status=$?
+            lunar-mission fidelity examples/missions/polar_high_fidelity.toml --output-dir /tmp/full-fidelity > /tmp/fidelity.log 2>&1
+            fidelity_status=$?
+          fi
           set -e
+
           {
-            echo "mission_status=$mission_status"
-            cat /tmp/full-mission.log
-            if [ "$mission_status" -eq 0 ]; then
-              python - <<'PY'
-import json
-from pathlib import Path
-root = Path('/tmp/full-mission')
-mission = json.loads((root / 'mission.json').read_text())
-access = json.loads((root / 'access.json').read_text())
-search = json.loads((root / 'frozen_orbit_search.json').read_text())
-uncertainty = json.loads((root / 'gravity_uncertainty.json').read_text())
-fidelity = json.loads((root / 'fidelity.json').read_text())
-print('\nstructured_metrics')
-print(json.dumps({
-    'summary': mission['summary'],
-    'site_access': access['site_access'],
-    'coverage': None if access['coverage'] is None else {
-        'covered_fraction': access['coverage']['covered_fraction'],
-        'mean_dwell_time_s': access['coverage']['mean_dwell_time_s'],
-        'maximum_dwell_time_s': access['coverage']['maximum_dwell_time_s'],
-    },
-    'earth_visibility': None if access['earth_visibility'] is None else {
-        'visible_time_fraction': access['earth_visibility']['visible_time_fraction'],
-        'minimum_visible_fraction': access['earth_visibility']['minimum_visible_fraction'],
-    },
-    'search_best': search['search']['candidates'][0] if 'candidates' in search['search'] else search['search']['refined']['candidates'][0],
-    'uncertainty': {
-        'impact_fraction': uncertainty['impact_fraction'],
-        'percentiles': uncertainty['percentiles'],
-    },
-    'fidelity': {
-        'acceleration_selection': fidelity['acceleration_selection'],
-        'trajectory_selection': fidelity['trajectory_selection'],
-    },
-}, indent=2))
-PY
-            fi
+            echo "download_status=$download_status"
+            cat /tmp/download.log
+            for name in analyse access search uncertainty fidelity; do
+              eval status=\${${name}_status}
+              echo
+              echo "${name}_status=$status"
+              if [ -f "/tmp/${name}.log" ]; then cat "/tmp/${name}.log"; fi
+            done
           } > results/mission_workflow_full_validation.txt
+
           git config user.name "Repository validation"
           git config user.email "validation@users.noreply.github.com"
           git add results/mission_workflow_full_validation.txt
-          git commit -m "Record full mission workflow validation"
+          git commit -m "Record diagnostic mission workflow validation"
           git push origin HEAD:main
-          exit "$mission_status"
+
+          if [ "$download_status" -ne 0 ] || [ "$analyse_status" -ne 0 ] || [ "$access_status" -ne 0 ] || [ "$search_status" -ne 0 ] || [ "$uncertainty_status" -ne 0 ] || [ "$fidelity_status" -ne 0 ]; then
+            exit 1
+          fi
