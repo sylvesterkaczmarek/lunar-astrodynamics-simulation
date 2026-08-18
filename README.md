@@ -273,6 +273,23 @@ It can support low lunar orbit trade studies, frozen/stability candidate screeni
 
 Operational flight dynamics, navigation, orbit determination, manoeuvre execution planning and mission-specific assurance require additional models, estimation, uncertainty treatment, verification and operational constraints beyond this package.
 
+## Cite this repository
+
+If you use or adapt this repository, please cite:
+
+> Kaczmarek, S. (2026). *Lunar Astrodynamics Simulation*. GitHub. https://github.com/sylvesterkaczmarek/lunar-astrodynamics-simulation
+
+```bibtex
+@software{Kaczmarek_2026_LunarAstrodynamicsSimulation,
+  author = {Sylvester Kaczmarek},
+  title  = {Lunar Astrodynamics Simulation},
+  year   = {2026},
+  url    = {https://github.com/sylvesterkaczmarek/lunar-astrodynamics-simulation}
+}
+```
+
 ## License
 
-MIT.
+MIT. See [LICENSE](LICENSE).
+
+© **Sylvester Kaczmarek** · [https://www.sylvesterkaczmarek.com](https://www.sylvesterkaczmarek.com)
