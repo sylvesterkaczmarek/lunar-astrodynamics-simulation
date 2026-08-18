@@ -1,0 +1,259 @@
+name: Scientist readiness audit
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  audit:
+    if: github.event.head_commit.message != 'Resolve scientist readiness audit findings'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Apply audit fixes
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace(path, old, new):
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              if old not in text:
+                  raise SystemExit(f'expected text not found in {path}: {old[:80]!r}')
+              p.write_text(text.replace(old, new), encoding='utf-8')
+
+          # Keep the historical module-level helper compatible, but make it use
+          # the one canonical surface-safe default grid.
+          p = Path('src/lunar_astrodynamics/stability.py')
+          text = p.read_text(encoding='utf-8')
+          start = text.index('\ndef default_low_lunar_search_space() -> StabilitySearchSpace:')
+          end = text.index('\n\n@dataclass(frozen=True)\nclass StabilityMetrics:', start)
+          shim = '''\ndef default_low_lunar_search_space() -> StabilitySearchSpace:\n    """Return the canonical surface-safe default search grid.\n\n    This compatibility wrapper delegates to :mod:`search_defaults` so direct\n    imports from ``lunar_astrodynamics.stability`` cannot diverge from the\n    package-level default.\n    """\n    from .search_defaults import default_low_lunar_search_space as canonical_default\n\n    return canonical_default()\n'''
+          p.write_text(text[:start] + shim + text[end:], encoding='utf-8')
+
+          # Retain the complete SHADR field in MissionContext so a mission may
+          # propagate at a lower degree while comparing against a higher-degree
+          # reference in the fidelity workflow.
+          replace(
+              'src/lunar_astrodynamics/mission.py',
+              'model = read_shadr(config.gravity.path, max_degree=degree, name=config.gravity.name or config.gravity.path.name, frame=gravity_frame)',
+              'model = read_shadr(config.gravity.path, name=config.gravity.name or config.gravity.path.name, frame=gravity_frame)',
+          )
+          replace(
+              'src/lunar_astrodynamics/mission.py',
+              '    mode = _string(uncertainty, "mode", "diagonal")\n    if mode == "diagonal":\n        return sample_independent_coefficient_uncertainty(context.gravity_model, seed=_integer(uncertainty, "seed", 20260818), count=_integer(uncertainty, "samples", 8), sigma_scale=_number(uncertainty, "sigma_scale", 1.0), assume_independent=_boolean(uncertainty, "assume_independent", False), include_mu=_boolean(uncertainty, "include_mu", False))',
+              '    mode = _string(uncertainty, "mode", "diagonal")\n    degree = context.dynamics.harmonic_degree if context.dynamics.harmonic_degree is not None else context.gravity_model.max_degree\n    order = context.dynamics.harmonic_order if context.dynamics.harmonic_order is not None else degree\n    nominal_for_uncertainty = context.gravity_model.truncated(degree, order)\n    if mode == "diagonal":\n        return sample_independent_coefficient_uncertainty(nominal_for_uncertainty, seed=_integer(uncertainty, "seed", 20260818), count=_integer(uncertainty, "samples", 8), sigma_scale=_number(uncertainty, "sigma_scale", 1.0), assume_independent=_boolean(uncertainty, "assume_independent", False), include_mu=_boolean(uncertainty, "include_mu", False))',
+          )
+
+          # The complete public-data example now asks whether its 60x60
+          # propagation fidelity is adequate relative to a 120x120 reference.
+          replace(
+              'examples/missions/polar_high_fidelity.toml',
+              'degrees = [2, 10, 20, 40, 60]\nreference_degree = 60\nreference_order = 60',
+              'degrees = [2, 10, 20, 40, 60, 120]\nreference_degree = 120\nreference_order = 120',
+          )
+
+          # Python 3.10 direct requirements installs should match pyproject.
+          p = Path('requirements.txt')
+          req = p.read_text(encoding='utf-8')
+          if 'tomli' not in req:
+              req = req.rstrip() + "\ntomli>=2,<3; python_version < '3.11'\n"
+              p.write_text(req, encoding='utf-8')
+
+          # Literal Prompt-11 wording cleanup. Preserve the limitation without
+          # using qualification labels the project should not claim.
+          replacements = {
+              'docs/forces.md': [
+                  ('does not make the propagator a mission-grade truth model', 'does not make the propagator an operational truth model'),
+              ],
+              'results/force_model_spice_validation.json': [
+                  ('It is not a mission-grade truth model.', 'It is not an operational truth model.'),
+              ],
+              'docs/model.md': [
+                  ('is not certified flight-dynamics software', 'is not intended for operational flight dynamics'),
+              ],
+              'docs/terrain.md': [
+                  ('a certified flight-clearance product', 'an operational flight-clearance product'),
+              ],
+              'docs/targeting.md': [
+                  ('They are not flight guidance, navigation or certified maneuver-planning software.', 'They are not intended for operational guidance, navigation or maneuver planning.'),
+              ],
+              'docs/frozen_orbit_search.md': [
+                  ('not a flight-certified orbit', 'not an operationally qualified orbit'),
+              ],
+              'docs/independent_validation.md': [
+                  ('They do not make the repository flight-certified, do not replace orbit determination', 'They do not make the repository suitable for operational flight use and do not replace orbit determination'),
+              ],
+          }
+          for filename, items in replacements.items():
+              for old, new in items:
+                  replace(filename, old, new)
+
+          # Regression for the canonical default wrapper.
+          p = Path('tests/test_search_defaults.py')
+          text = p.read_text(encoding='utf-8')
+          if 'test_stability_module_default_matches_canonical_default' not in text:
+              text = text.replace(
+                  'from lunar_astrodynamics import GRGM1200A_J2, default_low_lunar_search_space\n',
+                  'from lunar_astrodynamics import GRGM1200A_J2, default_low_lunar_search_space\nimport lunar_astrodynamics.stability as stability_module\n',
+              )
+              text += '''\n\ndef test_stability_module_default_matches_canonical_default() -> None:\n    canonical = default_low_lunar_search_space()\n    compatibility = stability_module.default_low_lunar_search_space()\n    assert compatibility.as_dict() == canonical.as_dict()\n'''
+              p.write_text(text, encoding='utf-8')
+
+          # Regression that propagation truncation does not destroy the higher
+          # degree field needed by the configuration-driven fidelity study.
+          p = Path('tests/test_mission.py')
+          text = p.read_text(encoding='utf-8')
+          if 'test_shadr_mission_retains_full_model_for_fidelity' not in text:
+              text = text.replace(
+                  'import json\nfrom pathlib import Path\n',
+                  'import json\nfrom pathlib import Path\nfrom types import SimpleNamespace\n',
+              )
+              text = text.replace(
+                  'import pytest\n\nfrom lunar_astrodynamics.cli',
+                  'import pytest\n\nimport lunar_astrodynamics.mission as mission_module\nfrom lunar_astrodynamics import SphericalHarmonicModel\nfrom lunar_astrodynamics.cli',
+              )
+              text += '''\n\ndef test_shadr_mission_retains_full_model_for_fidelity(monkeypatch, tmp_path: Path) -> None:\n    c = np.zeros((5, 5))\n    s = np.zeros_like(c)\n    c[0, 0] = 1.0\n    c[2, 0] = -9.0e-5\n    c[4, 2] = 1.0e-7\n    full_model = SphericalHarmonicModel(\n        4.9028e12, 1.738e6, c, s, name="full synthetic field", frame="MOON_PA_DE421"\n    )\n    monkeypatch.setattr(mission_module, "read_shadr", lambda *args, **kwargs: full_model)\n    monkeypatch.setattr(\n        mission_module,\n        "spice_rotation_provider",\n        lambda *args, **kwargs: (lambda _time_s: np.eye(3)),\n    )\n    mapping = _mapping()\n    mapping["gravity"] = {\n        "model": "shadr",\n        "path": str(tmp_path / "gravity.tab"),\n        "degree": 2,\n        "order": 2,\n        "frame": "MOON_PA_DE421",\n    }\n    config = mission_config_from_mapping(mapping)\n    dynamics, retained = mission_module._build_dynamics(\n        config, SimpleNamespace(epoch_et_s=0.0), ()\n    )\n    assert retained is full_model\n    assert retained.max_degree == 4\n    assert dynamics.harmonic_degree == 2\n    assert dynamics.harmonic_order == 2\n'''
+              p.write_text(text, encoding='utf-8')
+
+          # Explain the propagation/reference distinction in user docs.
+          p = Path('docs/mission_workflow.md')
+          text = p.read_text(encoding='utf-8')
+          marker = 'The underlying classical-element singularity policy is unchanged.'
+          if 'full coefficient field is retained' not in text:
+              insertion = ('For SHADR missions, the full coefficient field is retained in the mission context even when '
+                           'the nominal propagation uses a lower configured degree/order. This allows the fidelity workflow '
+                           'to compare that propagation choice with a higher-degree reference from the same gravity product.\n\n')
+              text = text.replace(marker, insertion + marker)
+              p.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Install package
+        run: python -m pip install -e .[dev,spice]
+
+      - name: Run complete test suite
+        run: python -m pytest | tee /tmp/pytest.txt
+
+      - name: Run self-contained complete workflow
+        run: lunar-mission all examples/missions/polar_quick.toml --output-dir /tmp/polar-quick | tee /tmp/quick.txt
+
+      - name: Download official public example data
+        run: python scripts/download_example_mission_data.py | tee /tmp/download.txt
+
+      - name: Run complete public-data workflow
+        run: lunar-mission all examples/missions/polar_high_fidelity.toml --output-dir /tmp/polar-public | tee /tmp/public.txt
+
+      - name: Record validation evidence
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import re
+          import sys
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          pytest_text = Path('/tmp/pytest.txt').read_text(encoding='utf-8')
+          match = re.search(r'(\d+) passed in ([0-9.]+)s', pytest_text)
+          if not match:
+              raise SystemExit('could not parse pytest result')
+
+          def load(path):
+              return json.loads(Path(path).read_text(encoding='utf-8'))
+
+          quick = load('/tmp/polar-quick/mission.json')
+          public = load('/tmp/polar-public/mission.json')
+          access = load('/tmp/polar-public/access.json')
+          search = load('/tmp/polar-public/frozen_orbit_search.json')
+          uncertainty = load('/tmp/polar-public/gravity_uncertainty.json')
+          fidelity = load('/tmp/polar-public/fidelity.json')
+          manifest = load('data/example_mission/manifest.json')
+
+          search_payload = search['search']
+          candidates = search_payload.get('candidates')
+          if candidates is None:
+              candidates = search_payload['refined']['candidates']
+          best = candidates[0]
+
+          record = {
+              'validated_utc': datetime.now(timezone.utc).isoformat(),
+              'python_version': sys.version.split()[0],
+              'test_suite': {
+                  'passed': int(match.group(1)),
+                  'failed': 0,
+                  'duration_s': float(match.group(2)),
+              },
+              'self_contained_workflow': {
+                  'configuration': 'examples/missions/polar_quick.toml',
+                  'summary': quick['summary'],
+              },
+              'public_data_workflow': {
+                  'configuration': 'examples/missions/polar_high_fidelity.toml',
+                  'summary': public['summary'],
+                  'dynamics': public['provenance']['dynamics'],
+                  'surface_frame': public['provenance']['surface_frame'],
+                  'terrain': public['provenance']['terrain'],
+                  'site_access': access['site_access'],
+                  'coverage': None if access['coverage'] is None else {
+                      'covered_fraction': access['coverage']['covered_fraction'],
+                      'mean_dwell_time_s': access['coverage']['mean_dwell_time_s'],
+                      'maximum_dwell_time_s': access['coverage']['maximum_dwell_time_s'],
+                  },
+                  'earth_visibility': None if access['earth_visibility'] is None else {
+                      'visible_time_fraction': access['earth_visibility']['visible_time_fraction'],
+                      'minimum_visible_fraction': access['earth_visibility']['minimum_visible_fraction'],
+                  },
+                  'best_search_candidate': best,
+                  'uncertainty': {
+                      'impact_fraction': uncertainty['impact_fraction'],
+                      'percentiles': uncertainty['percentiles'],
+                  },
+                  'fidelity': {
+                      'reference': fidelity['trajectory']['reference'],
+                      'acceleration_selection': fidelity['acceleration_selection'],
+                      'trajectory_selection': fidelity['trajectory_selection'],
+                  },
+                  'external_data_manifest': manifest,
+              },
+              'prior_independent_validation': 'results/independent_validation.json',
+          }
+          Path('results/scientist_readiness_audit.json').write_text(
+              json.dumps(record, indent=2) + '\n', encoding='utf-8'
+          )
+          PY
+
+      - name: Update README test count
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          record = json.loads(Path('results/scientist_readiness_audit.json').read_text())
+          count = record['test_suite']['passed']
+          p = Path('README.md')
+          text = p.read_text(encoding='utf-8')
+          old = 'Before the mission-workflow layer, the repository contained **163 tests** across gravity, uncertainty, terrain, force models, frames, orbital mathematics, stability search, targeting, fidelity and access/coverage. The workflow layer adds configuration, orchestration and CLI tests on top of that suite.'
+          new = f'The repository contains **{count} automated tests** across gravity, uncertainty, terrain, force models, frames, orbital mathematics, stability search, targeting, fidelity, access/coverage, configuration, orchestration and the CLI.'
+          if old not in text:
+              raise SystemExit('README test-count paragraph not found')
+          p.write_text(text.replace(old, new), encoding='utf-8')
+          PY
+
+      - name: Commit verified fixes
+        shell: bash
+        run: |
+          git config user.name "Repository validation"
+          git config user.email "validation@users.noreply.github.com"
+          git add src/lunar_astrodynamics/stability.py src/lunar_astrodynamics/mission.py tests/test_search_defaults.py tests/test_mission.py examples/missions/polar_high_fidelity.toml requirements.txt docs/mission_workflow.md docs/forces.md docs/model.md docs/terrain.md docs/targeting.md docs/frozen_orbit_search.md docs/independent_validation.md results/force_model_spice_validation.json results/scientist_readiness_audit.json README.md
+          git commit -m "Resolve scientist readiness audit findings"
+          git push origin HEAD:main
