@@ -1,0 +1,31 @@
+{
+  "validated_utc": "2026-08-18T00:13:52Z",
+  "configuration": "examples/missions/polar_quick.toml",
+  "command": "lunar-mission all examples/missions/polar_quick.toml --output-dir /tmp/configured-mission",
+  "python_version": "3.12",
+  "test_suite": {
+    "passed": 171,
+    "failed": 0,
+    "duration_s": 8.88
+  },
+  "mission": {
+    "name": "Low polar lunar screening mission",
+    "requested_duration_s": 10800.0,
+    "achieved_duration_s": 10800.0,
+    "minimum_reference_altitude_m": 90813.0,
+    "maximum_reference_altitude_m": 110536.0,
+    "minimum_terrain_clearance_m": null,
+    "minimum_periselene_altitude_m": 89503.0,
+    "maximum_periselene_altitude_m": 91192.0,
+    "minimum_aposelene_altitude_m": 109187.0,
+    "maximum_aposelene_altitude_m": 110933.0,
+    "eccentricity_linear_drift_over_span": 0.000114208,
+    "eccentricity_vector_linear_drift_norm": 0.000114296,
+    "impacted": false,
+    "gravity_fidelity": "central + J2",
+    "harmonic_degree": 2,
+    "harmonic_order": 0,
+    "perturbations": []
+  },
+  "scope": "Deterministic self-contained regression of the configuration, propagation, analysis, access/coverage, frozen-search, structured-output and plotting workflow. The low-degree dynamics are screening fidelity, not a substitute for a GRAIL science configuration."
+}
