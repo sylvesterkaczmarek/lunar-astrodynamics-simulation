@@ -1,0 +1,77 @@
+name: Documentation usability validation
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    if: github.event.head_commit.message != 'Record documentation validation'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install
+        run: python -m pip install -e .[dev]
+      - name: Run complete test suite
+        run: python -m pytest | tee /tmp/pytest.txt
+      - name: Validate local Markdown links
+        run: |
+          python - <<'PY' | tee /tmp/links.txt
+          from pathlib import Path
+          from urllib.parse import unquote
+          import re
+
+          root = Path('.').resolve()
+          files = [Path('README.md'), *sorted(Path('docs').glob('*.md'))]
+          pattern = re.compile(r'!?\[[^\]]*\]\(([^)]+)\)')
+          checked = 0
+          failures = []
+
+          for source in files:
+              text = source.read_text(encoding='utf-8')
+              for match in pattern.finditer(text):
+                  raw = match.group(1).strip()
+                  if raw.startswith('<') and raw.endswith('>'):
+                      raw = raw[1:-1]
+                  target = raw.split()[0]
+                  if target.startswith(('http://', 'https://', 'mailto:', '#')):
+                      continue
+                  target = unquote(target.split('#', 1)[0].split('?', 1)[0])
+                  if not target:
+                      continue
+                  checked += 1
+                  candidate = (source.parent / target).resolve()
+                  try:
+                      candidate.relative_to(root)
+                  except ValueError:
+                      failures.append(f'{source}: link escapes repository: {raw}')
+                      continue
+                  if not candidate.exists():
+                      failures.append(f'{source}: missing local target: {raw}')
+
+          if failures:
+              print('\n'.join(failures))
+              raise SystemExit(f'{len(failures)} broken local documentation link(s)')
+          print(f'Validated {checked} local Markdown links across {len(files)} documentation files: all valid')
+          PY
+      - name: Record result
+        run: |
+          {
+            cat /tmp/pytest.txt
+            echo
+            cat /tmp/links.txt
+          } > results/documentation_usability_validation.txt
+          git config user.name "Repository validation"
+          git config user.email "validation@users.noreply.github.com"
+          git add results/documentation_usability_validation.txt
+          git commit -m "Record documentation validation"
+          git push origin HEAD:main
