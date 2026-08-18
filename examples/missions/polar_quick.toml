@@ -1,0 +1,78 @@
+[mission]
+name = "Low polar lunar screening mission"
+epoch_utc = "2026-08-18T00:00:00"
+duration_s = 10800.0
+output_cadence_s = 120.0
+
+[state]
+kind = "elements"
+
+[state.elements]
+semi_major_axis_altitude_m = 100000.0
+eccentricity = 0.005
+inclination_deg = 90.0
+raan_deg = 0.0
+argument_of_periapsis_deg = 270.0
+true_anomaly_deg = 0.0
+
+[gravity]
+model = "j2"
+
+[perturbations]
+earth = false
+sun = false
+
+[srp]
+enabled = false
+
+[terrain]
+kind = "none"
+
+[integration]
+method = "DOP853"
+rtol = 1e-11
+position_atol_m = 1e-4
+velocity_atol_m_s = 1e-7
+max_step_s = 120.0
+
+[access]
+minimum_elevation_deg = 10.0
+terrain_aware = false
+
+[[sites]]
+name = "Equatorial reference site"
+latitude_deg = 0.0
+longitude_deg_east = 0.0
+elevation_m = 0.0
+coordinate_source = "synthetic workflow geometry reference"
+
+[[sites]]
+name = "Northern reference site"
+latitude_deg = 45.0
+longitude_deg_east = 0.0
+elevation_m = 0.0
+coordinate_source = "synthetic workflow geometry reference"
+
+[coverage]
+enabled = true
+latitude_min_deg = -60.0
+latitude_max_deg = 60.0
+latitude_step_deg = 30.0
+longitude_min_deg_east = 0.0
+longitude_max_deg_east = 360.0
+longitude_step_deg = 45.0
+minimum_elevation_deg = 10.0
+
+[search]
+semi_major_axis_altitudes_km = [90.0, 110.0]
+eccentricities = [0.005]
+inclinations_deg = [85.0, 95.0]
+raan_deg = [0.0]
+periapsis_deg = [90.0, 270.0]
+initial_anomaly_deg = [0.0]
+periapsis_parameterization = "longitude_of_periapsis"
+duration_s = 3600.0
+sample_count = 49
+workers = 1
+refine = false
+minimum_reference_altitude_km = 20.0
