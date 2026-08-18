@@ -1,0 +1,129 @@
+[mission]
+name = "DE421 polar lunar mission study"
+epoch_utc = "2015-07-13T17:05:30"
+duration_s = 21600.0
+output_cadence_s = 300.0
+
+[state]
+kind = "elements"
+
+[state.elements]
+semi_major_axis_altitude_m = 100000.0
+eccentricity = 0.005
+inclination_deg = 90.0
+raan_deg = 27.0
+argument_of_periapsis_deg = 270.0
+true_anomaly_deg = 0.0
+
+[gravity]
+model = "shadr"
+path = "../../data/example_mission/gggrx_0900c_sha.tab"
+name = "GRGM900C"
+degree = 60
+order = 60
+frame = "MOON_PA_DE421"
+
+[spice]
+enabled = true
+kernels = [
+  "../../data/example_mission/naif0012.tls",
+  "../../data/example_mission/de421.bsp",
+  "../../data/example_mission/moon_pa_de421_1900-2050.bpc",
+  "../../data/example_mission/moon_080317.tf",
+]
+inertial_frame = "J2000"
+gravity_frame = "MOON_PA_DE421"
+surface_frame = "MOON_ME_DE421"
+observer = "MOON"
+
+[perturbations]
+earth = true
+sun = true
+
+[srp]
+enabled = true
+spacecraft_mass_kg = 250.0
+illuminated_area_m2 = 4.0
+reflectivity_coefficient = 1.4
+lunar_shadow = true
+
+[terrain]
+kind = "lola_pds"
+image_path = "../../data/example_mission/LDEM_4.IMG"
+label_path = "../../data/example_mission/LDEM_4.LBL"
+frame = "MOON_ME_DE421"
+
+[integration]
+method = "DOP853"
+rtol = 1e-11
+position_atol_m = 1e-4
+velocity_atol_m_s = 1e-7
+max_step_s = 120.0
+
+[access]
+minimum_elevation_deg = 10.0
+terrain_aware = false
+
+[[sites]]
+name = "Apollo 11 Tranquility Base"
+latitude_deg = 0.67409
+longitude_deg_east = 23.47298
+use_terrain_elevation = true
+coordinate_source = "NASA Apollo 11 Lunar Surface Journal"
+
+[[sites]]
+name = "Apollo 17 Taurus-Littrow"
+latitude_deg = 20.1911
+longitude_deg_east = 30.7769
+use_terrain_elevation = true
+coordinate_source = "NASA Science Taurus-Littrow Valley resource"
+
+[coverage]
+enabled = true
+latitude_min_deg = -30.0
+latitude_max_deg = 30.0
+latitude_step_deg = 10.0
+longitude_min_deg_east = 0.0
+longitude_max_deg_east = 60.0
+longitude_step_deg = 10.0
+minimum_elevation_deg = 10.0
+
+[search]
+semi_major_axis_altitudes_km = [90.0, 110.0]
+eccentricities = [0.005, 0.01]
+inclinations_deg = [85.0, 90.0, 95.0]
+raan_deg = [27.0]
+periapsis_deg = [90.0, 270.0]
+initial_anomaly_deg = [0.0]
+periapsis_parameterization = "longitude_of_periapsis"
+duration_s = 10800.0
+sample_count = 65
+workers = 1
+refine = false
+minimum_reference_altitude_km = 20.0
+minimum_terrain_clearance_km = 5.0
+
+[uncertainty]
+mode = "diagonal"
+seed = 20260818
+samples = 3
+sigma_scale = 1.0
+assume_independent = true
+include_mu = false
+duration_s = 3600.0
+sample_count = 49
+percentiles = [5.0, 50.0, 95.0]
+
+[fidelity]
+degrees = [2, 10, 20, 40, 60]
+reference_degree = 60
+reference_order = 60
+benchmark_repetitions = 2
+acceleration_sample_stride = 6
+trajectory_duration_s = 3600.0
+trajectory_sample_count = 49
+maximum_relative_acceleration_error = 0.0001
+maximum_final_position_difference_m = 500.0
+maximum_final_velocity_difference_m_s = 0.5
+maximum_periselene_variation_difference_m = 250.0
+require_impact_match = true
