@@ -31,6 +31,8 @@ One perturbation size is not accepted without a numerical consistency check. Eve
 - `h`;
 - `2 h`.
 
+When `lower_bounds` or `upper_bounds` prevent a central step, a second-order forward or backward stencil is used and the step is reduced to fit the full sweep within the bounds. Orbit-parameter sensitivity and differential correction pass their parameter bounds through, including the eccentricity zero boundary. Diagnostics record the stencil and actual selected step. Derivatives use the representable floating-point offsets; steps that cannot distinguish three evaluation points raise an error.
+
 The half/base and base/double derivative differences are compared in norm. The derivative from the tighter adjacent pair is retained and the disagreement is stored in `DerivativeColumnDiagnostic`.
 
 A column is marked stable only when its selected-pair disagreement is below `FiniteDifferenceSettings.max_relative_disagreement`.
@@ -113,7 +115,7 @@ Each design variable has:
 At each iteration the algorithm:
 
 1. evaluates the normalized target residual;
-2. builds a central finite-difference Jacobian with step-size diagnostics;
+2. builds a bounds-aware finite-difference Jacobian with step-size diagnostics;
 3. rejects a step-size-sensitive Jacobian when configured to do so;
 4. scales the Jacobian by the design-variable correction scales;
 5. solves a damped linear least-squares Newton step;
@@ -179,8 +181,20 @@ Reference-radius altitude and terrain clearance remain different quantities.
 At fixed control intervals it evaluates the current osculating orbit and may trigger on:
 
 - minimum allowed osculating periselene altitude;
-- maximum semimajor-axis deviation from the initial reference orbit;
+- maximum semimajor-axis deviation from the target orbit;
 - maximum eccentricity-vector deviation from the initial reference orbit.
+
+The semimajor-axis reference is derived from the correction targets as
+`analysis_reference_radius_m + (target_periselene_altitude_m + target_aposelene_altitude_m) / 2`.
+An omitted apsis target uses its initial osculating value. If both targets are omitted,
+the initial semimajor axis remains the reference. This keeps the trigger and correction
+objective consistent when the supplied initial state includes an injection error.
+The eccentricity-vector reference remains the initial vector, since apsis altitudes
+alone do not specify its direction.
+
+Reported `delta_v_rtn_m_s` values always have three entries in radial, transverse, normal order, with zero for a disabled component, regardless of the configured correction-component order.
+
+A converged correction must also clear every active trigger threshold. Otherwise the run stops with an explicit reason, preserves the pre-burn state and counts no manoeuvre.
 
 When a trigger fires, the controller constructs a local RTN basis and uses the same differential-correction machinery to solve for an instantaneous velocity impulse that restores configured osculating targets.
 

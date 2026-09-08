@@ -477,6 +477,7 @@ class UncertaintyStabilitySummary:
     eccentricity_vector_detrended_max_radius: float
     apsidal_direction_max_change_rad: float | None
     orbital_plane_max_change_rad: float
+    minimum_reference_altitude_m: float | None = None
 
     def as_dict(self) -> dict[str, object]:
         return _jsonable(asdict(self))  # type: ignore[return-value]
@@ -929,6 +930,8 @@ def _propagate_candidate(
         solution = terrain_result.solution
         minimum_terrain_clearance = float(terrain_result.clearance.minimum_clearance_m)
 
+    if not solution.success:
+        raise ValueError(f"stability-search propagation failed: {solution.message}")
     time, states, impacted, impact_time = _trajectory_with_event_sample(solution)
     lifetime = impact_time if impacted and impact_time is not None else float(settings.duration_s)
     history = orbit_history(
@@ -975,6 +978,7 @@ def _uncertainty_summary(
         adverse_percentile=float(percentile),
         impact_fraction=float(np.mean([item.impacted for item in values])),
         minimum_lifetime_s=float(min(item.impact_free_lifetime_s for item in values)),
+        minimum_reference_altitude_m=float(min(item.minimum_reference_altitude_m for item in values)),
         minimum_terrain_clearance_m=(
             None if not clearances else float(min(float(item) for item in clearances))
         ),
@@ -1160,6 +1164,11 @@ def _constraint_violations(
     if uncertainty is not None and constraints.apply_to_uncertainty:
         if constraints.require_full_duration and uncertainty.minimum_lifetime_s < nominal.duration_s - 1.0e-9:
             violations.append("at least one uncertainty realization did not survive the requested duration")
+        if constraints.minimum_reference_altitude_m is not None:
+            if uncertainty.minimum_reference_altitude_m is None:
+                violations.append("uncertainty reference-radius altitude unavailable")
+            elif uncertainty.minimum_reference_altitude_m < constraints.minimum_reference_altitude_m:
+                violations.append("uncertainty minimum reference-radius altitude below constraint")
         if constraints.minimum_terrain_clearance_m is not None:
             if uncertainty.minimum_terrain_clearance_m is None:
                 violations.append("uncertainty terrain clearance unavailable")

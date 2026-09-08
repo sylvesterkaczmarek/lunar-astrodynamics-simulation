@@ -173,6 +173,20 @@ class ThirdBodyGravity:
         return result
 
 
+def _unit_circle_segment_area(half_angle_rad: float) -> float:
+    """Area of a unit-radius circular segment without small-angle cancellation."""
+    angle = float(half_angle_rad)
+    if angle < 0.01:
+        squared = angle * angle
+        # angle - sin(angle) cos(angle), expanded about zero.  Direct
+        # subtraction loses the segment at a grazing eclipse contact.
+        return angle * squared * (
+            2.0 / 3.0
+            + squared * (-2.0 / 15.0 + squared * (4.0 / 315.0 - squared * 2.0 / 2835.0))
+        )
+    return float(angle - np.sin(angle) * np.cos(angle))
+
+
 def apparent_disk_illumination_fraction(
     solar_angular_radius_rad: float,
     occulting_angular_radius_rad: float,
@@ -199,21 +213,36 @@ def apparent_disk_illumination_fraction(
     d = separation
     r_s = sun_radius
     r_b = body_radius
-    sun_argument = np.clip((d * d + r_s * r_s - r_b * r_b) / (2.0 * d * r_s), -1.0, 1.0)
-    body_argument = np.clip((d * d + r_b * r_b - r_s * r_s) / (2.0 * d * r_b), -1.0, 1.0)
-    radicand = max(
-        0.0,
-        (-d + r_s + r_b)
-        * (d + r_s - r_b)
-        * (d - r_s + r_b)
-        * (d + r_s + r_b),
+    radius_sum = r_s + r_b
+    radius_difference = abs(r_b - r_s)
+    # Heron's factored area gives the common half-chord.  atan2 then retains
+    # the tiny occulting-disk angle that acos rounds to zero near contact,
+    # particularly when the Moon's apparent disk dwarfs the Sun's.
+    radicand = (
+        (radius_sum - d)
+        * (radius_sum + d)
+        * (d - radius_difference)
+        * (d + radius_difference)
     )
-    overlap = (
-        r_s * r_s * np.arccos(sun_argument)
-        + r_b * r_b * np.arccos(body_argument)
-        - 0.5 * np.sqrt(radicand)
+    half_chord = np.sqrt(max(0.0, radicand)) / (2.0 * d)
+    chord_offset = (r_s - r_b) * (r_s + r_b) / d
+    sun_chord_distance = 0.5 * (d + chord_offset)
+    body_chord_distance = 0.5 * (d - chord_offset)
+    body_segment = (r_b / r_s) ** 2 * _unit_circle_segment_area(
+        np.arctan2(half_chord, body_chord_distance)
     )
-    visible = 1.0 - overlap / (np.pi * r_s * r_s)
+    if sun_chord_distance < 0.0:
+        # Compute the small visible cap directly instead of subtracting an
+        # almost complete solar disk from its own area.
+        sun_complement = _unit_circle_segment_area(
+            np.arctan2(half_chord, -sun_chord_distance)
+        )
+        visible = (sun_complement - body_segment) / np.pi
+    else:
+        sun_segment = _unit_circle_segment_area(
+            np.arctan2(half_chord, sun_chord_distance)
+        )
+        visible = 1.0 - (sun_segment + body_segment) / np.pi
     return float(np.clip(visible, 0.0, 1.0))
 
 

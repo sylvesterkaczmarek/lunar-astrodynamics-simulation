@@ -855,17 +855,13 @@ class FidelitySelectionResult:
 
 
 def _acceleration_passes(entry: AccelerationFidelityEntry, tolerance: FidelityTolerance) -> bool:
-    if (
-        tolerance.maximum_absolute_acceleration_error_m_s2 is not None
-        and entry.maximum_absolute_error_m_s2
-        > tolerance.maximum_absolute_acceleration_error_m_s2
-    ):
-        return False
-    if (
-        tolerance.maximum_relative_acceleration_error is not None
-        and entry.maximum_relative_error > tolerance.maximum_relative_acceleration_error
-    ):
-        return False
+    checks = (
+        (entry.maximum_absolute_error_m_s2, tolerance.maximum_absolute_acceleration_error_m_s2),
+        (entry.maximum_relative_error, tolerance.maximum_relative_acceleration_error),
+    )
+    for value, limit in checks:
+        if limit is not None and (not np.isfinite(value) or value < 0.0 or value > limit):
+            return False
     return True
 
 
@@ -888,7 +884,9 @@ def _trajectory_passes(entry: TrajectoryFidelityEntry, tolerance: FidelityTolera
         (entry.lifetime_difference_s, tolerance.maximum_lifetime_difference_s),
     )
     for value, limit in checks:
-        if limit is not None and (value is None or value > limit):
+        if limit is not None and (
+            value is None or not np.isfinite(value) or value < 0.0 or value > limit
+        ):
             return False
     if tolerance.require_impact_match and not entry.impact_matches_reference:
         return False
@@ -899,34 +897,38 @@ def select_lowest_harmonic_truncation(
     report: AccelerationFidelityReport | TrajectoryFidelityReport,
     tolerance: FidelityTolerance,
 ) -> FidelitySelectionResult:
-    """Return the lowest tested degree/order meeting all applicable tolerances.
+    """Return the lowest tested degree/order meeting all requested tolerances.
 
     The result applies only to the samples or trajectory represented by
     ``report``. It is not an altitude-only or mission-independent rule.
+    Criteria requiring a different report type are rejected, not ignored.
     """
     ordered = tuple(
         sorted(report.entries, key=lambda entry: (entry.truncation.degree, entry.truncation.order))
     )
+    acceleration_limits = (
+        tolerance.maximum_absolute_acceleration_error_m_s2,
+        tolerance.maximum_relative_acceleration_error,
+    )
+    trajectory_limits = (
+        tolerance.maximum_final_position_difference_m,
+        tolerance.maximum_final_velocity_difference_m_s,
+        tolerance.maximum_periselene_variation_difference_m,
+        tolerance.maximum_eccentricity_variation_difference,
+        tolerance.maximum_minimum_terrain_clearance_difference_m,
+        tolerance.maximum_lifetime_difference_s,
+    )
     if isinstance(report, AccelerationFidelityReport):
-        if (
-            tolerance.maximum_absolute_acceleration_error_m_s2 is None
-            and tolerance.maximum_relative_acceleration_error is None
-        ):
+        if all(value is None for value in acceleration_limits):
             raise ValueError("acceleration selection requires an acceleration-error tolerance")
+        if any(value is not None for value in trajectory_limits):
+            raise ValueError("acceleration reports cannot assess trajectory tolerances")
         passes = _acceleration_passes
     else:
-        if all(
-            value is None
-            for value in (
-                tolerance.maximum_final_position_difference_m,
-                tolerance.maximum_final_velocity_difference_m_s,
-                tolerance.maximum_periselene_variation_difference_m,
-                tolerance.maximum_eccentricity_variation_difference,
-                tolerance.maximum_minimum_terrain_clearance_difference_m,
-                tolerance.maximum_lifetime_difference_s,
-            )
-        ):
+        if all(value is None for value in trajectory_limits):
             raise ValueError("trajectory selection requires at least one trajectory tolerance")
+        if any(value is not None for value in acceleration_limits):
+            raise ValueError("trajectory reports cannot assess acceleration tolerances")
         passes = _trajectory_passes
     for entry in ordered:
         if passes(entry, tolerance):

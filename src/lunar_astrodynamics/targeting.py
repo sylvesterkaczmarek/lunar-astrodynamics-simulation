@@ -1,7 +1,8 @@
 """Orbit sensitivity, local targeting, and preliminary impulsive station-keeping.
 
 This module intentionally keeps the numerical machinery explicit. Sensitivities
-use central finite differences and compare half/base/double perturbation sizes.
+use central finite differences, or one-sided differences at supplied bounds,
+and compare half/base/double perturbation sizes.
 The differential corrector uses scaled least-squares Newton steps plus a line
 search and always reports convergence or failure. Station-keeping is an
 impulsive osculating-orbit restore model for preliminary mission analysis, not
@@ -59,7 +60,7 @@ def _signed_angle_difference(angle_rad: float, target_rad: float) -> float:
 
 def _finite_vector(value: ArrayLike, *, name: str, length: int | None = None) -> FloatArray:
     array = np.asarray(value, dtype=float)
-    if array.ndim != 1 or (length is not None and array.size != length) or not np.all(np.isfinite(array)):
+    if array.ndim != 1 or array.size == 0 or (length is not None and array.size != length) or not np.all(np.isfinite(array)):
         suffix = "" if length is None else f" of length {length}"
         raise ValueError(f"{name} must be a finite one-dimensional vector{suffix}")
     return array
@@ -67,7 +68,7 @@ def _finite_vector(value: ArrayLike, *, name: str, length: int | None = None) ->
 
 @dataclass(frozen=True)
 class FiniteDifferenceSettings:
-    """Central finite-difference step validation settings.
+    """Finite-difference step validation settings.
 
     A derivative column is evaluated at ``0.5 h``, ``h`` and ``2 h``. The
     derivative from the tighter of the half/base or base/double pair is kept,
@@ -93,6 +94,7 @@ class DerivativeColumnDiagnostic:
     base_double_relative_disagreement: float
     selected_pair_relative_disagreement: float
     stable: bool
+    stencil: str = "central"
 
     def as_dict(self) -> dict[str, object]:
         return _jsonable(asdict(self))  # type: ignore[return-value]
@@ -119,17 +121,29 @@ def finite_difference_jacobian(
     *,
     labels: Sequence[str] | None = None,
     settings: FiniteDifferenceSettings = FiniteDifferenceSettings(),
+    lower_bounds: ArrayLike | None = None,
+    upper_bounds: ArrayLike | None = None,
 ) -> FiniteDifferenceJacobianResult:
     """Return a central finite-difference Jacobian with explicit step sweep.
 
     The function is intentionally generic so the same numerical derivative
     machinery is used for Cartesian state sensitivities, orbital-parameter
-    targeting and impulsive burn correction.
+    targeting and impulsive burn correction. Near supplied bounds a second-order
+    forward or backward stencil replaces the central stencil. The entire step
+    sweep stays inside the bounds, reducing its step when necessary.
     """
     x = _finite_vector(variables, name="variables")
     h = _finite_vector(steps, name="steps", length=x.size)
     if np.any(h <= 0.0):
         raise ValueError("finite-difference steps must be positive")
+    lower = np.full(x.size, -np.inf) if lower_bounds is None else np.asarray(lower_bounds, dtype=float)
+    upper = np.full(x.size, np.inf) if upper_bounds is None else np.asarray(upper_bounds, dtype=float)
+    if (
+        lower.shape != x.shape or upper.shape != x.shape
+        or np.any(np.isnan(lower)) or np.any(np.isnan(upper))
+        or np.any(lower >= upper) or np.any(x < lower) or np.any(x > upper)
+    ):
+        raise ValueError("finite-difference bounds must enclose each variable with positive width")
     column_labels = tuple(labels) if labels is not None else tuple(f"x{index}" for index in range(x.size))
     if len(column_labels) != x.size or any(not label for label in column_labels):
         raise ValueError("labels must match the variable vector length")
@@ -139,16 +153,45 @@ def finite_difference_jacobian(
     diagnostics: list[DerivativeColumnDiagnostic] = []
 
     for column, (step, label) in enumerate(zip(h, column_labels, strict=True)):
+        left_room = float(x[column] - lower[column])
+        right_room = float(upper[column] - x[column])
+        direction = 0
+        sweep_step = float(step)
+        if min(left_room, right_room) < 2.0 * sweep_step:
+            direction = 1 if right_room >= left_room else -1
+            sweep_step = min(sweep_step, max(left_room, right_room) / 4.0)
         derivatives: dict[float, FloatArray] = {}
         for factor in (0.5, 1.0, 2.0):
-            delta = float(step * factor)
+            delta = float(sweep_step * factor)
             plus = x.copy()
             minus = x.copy()
-            plus[column] += delta
-            minus[column] -= delta
+            plus[column] += delta if direction == 0 else direction * delta
+            minus[column] += -delta if direction == 0 else direction * 2.0 * delta
+            # A final addition can round just outside a finite bound. Clamp
+            # that coordinate, then differentiate using its actual offset.
+            plus[column] = np.clip(plus[column], lower[column], upper[column])
+            minus[column] = np.clip(minus[column], lower[column], upper[column])
+            if (
+                not np.isfinite(delta) or delta <= 0.0
+                or not np.isfinite(plus[column]) or not np.isfinite(minus[column])
+                or plus[column] == x[column] or minus[column] == x[column]
+                or plus[column] == minus[column]
+            ):
+                raise ValueError(f"{label} finite-difference step is not representable at the supplied variable")
             y_plus = _finite_vector(evaluate(plus), name=f"{label} positive perturbation output", length=y0.size)
             y_minus = _finite_vector(evaluate(minus), name=f"{label} negative perturbation output", length=y0.size)
-            derivatives[factor] = (y_plus - y_minus) / (2.0 * delta)
+            plus_offset = float(plus[column] - x[column])
+            minus_offset = float(minus[column] - x[column])
+            if plus_offset == -minus_offset:
+                derivative = (y_plus - y_minus) / (plus_offset - minus_offset)
+            else:
+                # Differentiate the quadratic through the actual floating-point
+                # abscissae. Rounded offsets need not equal their requested h.
+                derivative = (
+                    (minus_offset / plus_offset) * (y_plus - y0)
+                    - (plus_offset / minus_offset) * (y_minus - y0)
+                ) / (minus_offset - plus_offset)
+            derivatives[factor] = _finite_vector(derivative, name=f"{label} derivative", length=y0.size)
 
         half = derivatives[0.5]
         base = derivatives[1.0]
@@ -166,11 +209,11 @@ def finite_difference_jacobian(
         base_double = relative_difference(base, double)
         if half_base <= base_double:
             selected = half
-            selected_step = 0.5 * float(step)
+            selected_step = 0.5 * sweep_step
             selected_difference = half_base
         else:
             selected = base
-            selected_step = float(step)
+            selected_step = sweep_step
             selected_difference = base_double
         jacobian[:, column] = selected
         diagnostics.append(
@@ -182,6 +225,7 @@ def finite_difference_jacobian(
                 base_double_relative_disagreement=base_double,
                 selected_pair_relative_disagreement=selected_difference,
                 stable=selected_difference <= settings.max_relative_disagreement,
+                stencil={0: "central", 1: "forward", -1: "backward"}[direction],
             )
         )
 
@@ -407,6 +451,8 @@ def differential_correct(
             steps,
             labels=labels,
             settings=settings.finite_difference,
+            lower_bounds=[-np.inf if item.lower_bound is None else item.lower_bound for item in definitions],
+            upper_bounds=[np.inf if item.upper_bound is None else item.upper_bound for item in definitions],
         )
         last_diagnostics = jacobian_result.diagnostics
         unstable = tuple(item.label for item in last_diagnostics if not item.stable)
@@ -858,6 +904,8 @@ def evaluate_orbit_target(
         solution = terrain_result.solution
         minimum_terrain_clearance = float(terrain_result.clearance.minimum_clearance_m)
 
+    if not solution.success:
+        raise ValueError(f"targeting propagation failed: {solution.message}")
     time, states, impacted, impact_time = _trajectory_with_event_sample(solution)
     if time.size < 2:
         raise ValueError("targeting trajectory contains fewer than two samples")
@@ -1025,6 +1073,8 @@ def orbit_parameter_sensitivity(
         steps,
         labels=tuple(item.label for item in definitions),
         settings=finite_difference,
+        lower_bounds=[-np.inf if item.lower_bound is None else item.lower_bound for item in definitions],
+        upper_bounds=[np.inf if item.upper_bound is None else item.upper_bound for item in definitions],
     )
     return OrbitParameterSensitivityResult(
         parameter_names=tuple(item.label for item in definitions),
@@ -1417,6 +1467,10 @@ def simulate_impulsive_stationkeeping(
     target_aposelene = (
         initial_aposelene if policy.target_aposelene_altitude_m is None else policy.target_aposelene_altitude_m
     )
+    if policy.target_periselene_altitude_m is not None or policy.target_aposelene_altitude_m is not None:
+        # The trigger must monitor the orbit restored by the corrector, rather
+        # than a disturbed starting orbit that differs from explicit targets.
+        reference_a = dynamics.analysis_reference_radius_m + 0.5 * (target_periselene + target_aposelene)
 
     times: list[float] = [0.0]
     states: list[FloatArray] = [state.copy()]
@@ -1461,8 +1515,23 @@ def simulate_impulsive_stationkeeping(
                     f"limit {policy.maximum_delta_v_per_maneuver_m_s:.6g} m/s"
                 )
                 break
-            state = state.copy()
-            state[3:] += delta_inertial
+            corrected_state = state.copy()
+            corrected_state[3:] += delta_inertial
+            remaining_triggers = _stationkeeping_trigger_reasons(
+                corrected_state,
+                dynamics,
+                policy,
+                reference_semi_major_axis_m=reference_a,
+                reference_eccentricity_vector=reference_e,
+            )
+            if remaining_triggers:
+                terminated_early = True
+                termination_reason = (
+                    "station-keeping correction leaves trigger thresholds violated: "
+                    + "; ".join(remaining_triggers)
+                )
+                break
+            state = corrected_state
             post_peri, post_apo, _, post_e = _osculating_summary(state, dynamics)
             if times and abs(times[-1] - current_time) <= 1.0e-9:
                 states[-1] = state.copy()
@@ -1473,7 +1542,11 @@ def simulate_impulsive_stationkeeping(
                     utc_time=_maneuver_utc(epoch, current_time),
                     trigger_reasons=reasons,
                     delta_v_inertial_m_s=delta_inertial.copy(),
-                    delta_v_rtn_m_s=delta_components.copy(),
+                    delta_v_rtn_m_s=np.array([
+                        delta_components[policy.correction_components.index(component)]
+                        if component in policy.correction_components else 0.0
+                        for component in ("radial", "transverse", "normal")
+                    ]),
                     delta_v_magnitude_m_s=delta_v,
                     pre_periselene_altitude_m=pre_peri,
                     post_periselene_altitude_m=post_peri,

@@ -18,6 +18,9 @@ jobs:
           cache: pip
       - name: Install
         run: python -m pip install -e .[dev]
+      - name: Install optional scientific integrations
+        if: matrix.python-version == '3.12'
+        run: python -m pip install -e .[dev,spice,terrain]
       - name: Test
         run: python -m pytest
       - name: J2 smoke example

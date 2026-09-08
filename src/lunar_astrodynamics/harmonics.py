@@ -32,8 +32,8 @@ class SphericalHarmonicModel:
     def __post_init__(self) -> None:
         c = np.array(self.c, dtype=float, copy=True)
         s = np.array(self.s, dtype=float, copy=True)
-        if c.ndim != 2 or c.shape[0] != c.shape[1] or s.shape != c.shape:
-            raise ValueError("c and s must be matching square coefficient arrays")
+        if c.ndim != 2 or c.shape[0] == 0 or c.shape[0] != c.shape[1] or s.shape != c.shape:
+            raise ValueError("c and s must be matching non-empty square coefficient arrays")
         if (
             not np.isfinite(self.mu_m3_s2)
             or not np.isfinite(self.reference_radius_m)
@@ -203,6 +203,8 @@ def _header_from_record(
         not np.isfinite(radius_km)
         or not np.isfinite(mu_km3_s2)
         or not np.isfinite(mu_sigma_km3_s2)
+        or not np.isfinite(reference_longitude_deg)
+        or not np.isfinite(reference_latitude_deg)
         or radius_km <= 0.0
         or mu_km3_s2 <= 0.0
         or mu_sigma_km3_s2 < 0.0
@@ -312,10 +314,12 @@ def read_shadr(
         sigma_c = np.zeros_like(c)
         sigma_s = np.zeros_like(c)
         c[0, 0] = 1.0
-        seen: set[tuple[int, int]] = set()
+        # One bit per represented order keeps full-file duplicate validation
+        # compact even when only a low-degree truncation is being retained.
+        seen_orders: dict[int, int] = {}
         coefficient_rows = 0
 
-        for record_number, raw_line in enumerate(handle, start=3):
+        for record_number, raw_line in enumerate(handle, start=2):
             record = _without_record_ending(raw_line)
             if not record.strip():
                 continue
@@ -328,11 +332,12 @@ def read_shadr(
                     f"SHADR coefficient ({n}, {m}) exceeds header degree/order "
                     f"({file_degree}, {file_order})"
                 )
+            order_bit = 1 << m
+            seen = seen_orders.get(n, 0)
+            if seen & order_bit:
+                raise ValueError(f"duplicate SHADR coefficient ({n}, {m})")
+            seen_orders[n] = seen | order_bit
             if n <= degree:
-                key = (n, m)
-                if key in seen:
-                    raise ValueError(f"duplicate SHADR coefficient ({n}, {m})")
-                seen.add(key)
                 c[n, m] = c_nm
                 s[n, m] = s_nm
                 sigma_c[n, m] = sigma_c_nm

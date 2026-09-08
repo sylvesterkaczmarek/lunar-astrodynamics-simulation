@@ -1,4 +1,5 @@
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -18,6 +19,7 @@ from lunar_astrodynamics import (
     save_terrain_npz,
     terrain_clearance_m,
 )
+from lunar_astrodynamics.terrain import analyze_terrain_clearance
 
 
 def _gridline_terrain(*, elevation_m: float = 0.0, frame: str = "TEST_FRAME") -> RegularLatLonTerrain:
@@ -50,6 +52,38 @@ def test_gridline_bilinear_interpolation_matches_known_surface() -> None:
     expected = 2.0 * 22.5 + 0.5 * 135.0
     actual = terrain.elevation_m(np.deg2rad(22.5), np.deg2rad(135.0))
     assert actual == pytest.approx(expected)
+
+
+def test_latitude_interpolation_does_not_snap_nearby_points_to_grid_rows() -> None:
+    terrain = RegularLatLonTerrain(
+        np.array([-90.0, 0.0, 45.0, 45.001, 90.0]),
+        np.array([0.0, 180.0, 360.0]),
+        np.repeat(np.array([0.0, 0.0, 0.0, 100.0, 0.0])[:, None], 3, axis=1),
+        frame="TEST_FRAME",
+    )
+    assert terrain.elevation_m(np.deg2rad(45.0004), 0.0) == pytest.approx(40.0, abs=1e-6)
+
+
+def test_near_pole_interpolation_retains_resolved_pixel_cap_relief() -> None:
+    terrain = RegularLatLonTerrain(
+        np.array([-89.999, 89.999]),
+        np.array([45.0, 135.0, 225.0, 315.0]),
+        np.array([[0.0] * 4, [100.0, 200.0, 300.0, 400.0]]),
+        frame="TEST_FRAME", registration="pixel",
+    )
+    # Halfway from the northern pixel ring (100 m at this longitude) to its
+    # longitude-independent pole (the ring mean, 250 m).
+    assert terrain.elevation_m(np.deg2rad(89.9995), np.deg2rad(45.0)) == pytest.approx(175.0)
+    assert terrain.elevation_m(np.pi / 2.0, np.deg2rad(45.0)) == pytest.approx(250.0)
+
+
+def test_gridline_global_boundaries_require_absolute_coordinate_accuracy() -> None:
+    with pytest.raises(ValueError, match=r"include -90 and \+90"):
+        RegularLatLonTerrain(
+            np.array([-89.9999, 0.0, 90.0]),
+            np.array([0.0, 180.0, 360.0]),
+            np.zeros((3, 3)), frame="TEST_FRAME",
+        )
 
 
 def test_gridline_requires_matching_periodic_boundary_columns() -> None:
@@ -187,6 +221,35 @@ def test_terrain_propagation_rejects_initial_state_below_local_surface() -> None
             lambda _time: np.eye(3),
             terrain_frame="TEST_FRAME",
         )
+
+
+@pytest.mark.parametrize("acceleration_value", [1.0, [1.0], [0.0, np.nan, 0.0]])
+def test_terrain_propagation_rejects_invalid_force_vectors(acceleration_value) -> None:
+    terrain = _gridline_terrain(frame="TEST_FRAME")
+    initial = np.array([LOLA_REFERENCE_RADIUS_M + 1000.0, 0.0, 0.0, 0.0, 1.0, 0.0])
+    with pytest.raises(ValueError, match="acceleration must return a finite three-vector"):
+        propagate_with_terrain(
+            initial, 10.0, lambda _time, _position: acceleration_value,
+            terrain, lambda _time: np.eye(3), terrain_frame="TEST_FRAME",
+        )
+
+
+@pytest.mark.parametrize("direct_analysis", [False, True])
+def test_failed_integration_cannot_produce_a_terrain_safety_report(monkeypatch, direct_analysis) -> None:
+    failed = SimpleNamespace(success=False, message="required step size is too small", sol=None)
+    terrain = _gridline_terrain(frame="TEST_FRAME")
+    with pytest.raises(RuntimeError, match="terrain propagation failed: required step size"):
+        if direct_analysis:
+            analyze_terrain_clearance(
+                failed, terrain, lambda _time: np.eye(3), terrain_frame="TEST_FRAME",
+            )
+        else:
+            monkeypatch.setattr("lunar_astrodynamics.terrain.solve_ivp", lambda *_a, **_k: failed)
+            propagate_with_terrain(
+                [LOLA_REFERENCE_RADIUS_M + 1000.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+                10.0, lambda _time, _position: np.zeros(3), terrain,
+                lambda _time: np.eye(3), terrain_frame="TEST_FRAME",
+            )
 
 
 def test_mean_radius_event_has_explicit_name_and_legacy_alias() -> None:

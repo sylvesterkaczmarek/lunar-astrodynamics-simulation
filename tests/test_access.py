@@ -283,3 +283,163 @@ def test_structured_exports_are_valid_json_and_csv(tmp_path) -> None:
     coverage.write_csv(coverage_csv)
     json.loads(coverage_json.read_text())
     assert "dwell_time_s" in coverage_csv.read_text()
+
+
+def test_terrain_access_can_see_overhead_spacecraft_from_below_reference_sphere() -> None:
+    terrain = RegularLatLonTerrain(
+        np.array([-90.0, 0.0, 90.0]),
+        np.array([0.0, 180.0, 360.0]),
+        np.full((3, 3), -2000.0),
+        reference_radius_m=R,
+        frame=FRAME,
+    )
+    site = LunarSurfaceSite.from_terrain("depression", 0.0, 0.0, terrain)
+    position = _position(0.0, 0.0, 100_000.0)
+    observation = site_observation(
+        0.0, position, site, IDENTITY, body_fixed_frame=FRAME,
+        terrain=terrain, terrain_aware=True,
+    )
+    assert observation.elevation_deg == pytest.approx(90.0)
+    assert observation.slant_range_m == pytest.approx(102_000.0)
+    assert observation.terrain_los_clear is True
+    assert observation.spherical_los_clear is False
+    assert observation.visible
+    result = analyze_site_access(
+        [0.0, 100.0], [position, position], site, IDENTITY,
+        body_fixed_frame=FRAME, terrain=terrain, terrain_aware=True,
+    )
+    assert result.total_access_time_s == pytest.approx(100.0)
+    # Explicit spherical analysis retains its chosen reference surface.
+    assert not site_observation(
+        0.0, position, site, IDENTITY, body_fixed_frame=FRAME,
+    ).visible
+
+
+def test_terrain_los_checks_spacecraft_endpoint() -> None:
+    terrain = RegularLatLonTerrain(
+        np.array([-90.0, 0.0, 90.0]),
+        np.array([0.0, 9.0, 10.0, 360.0]),
+        np.array([[0.0] * 4, [0.0, 0.0, 120_000.0, 0.0], [0.0] * 4]),
+        reference_radius_m=R,
+        frame=FRAME,
+    )
+    observation = site_observation(
+        0.0, _position(0.0, 10.0, 100_000.0),
+        LunarSurfaceSite("site", 0.0, 0.0, frame=FRAME), IDENTITY,
+        body_fixed_frame=FRAME, terrain=terrain, terrain_aware=True,
+        terrain_los_samples=2,
+    )
+    assert observation.elevation_deg > 0.0
+    assert observation.spherical_los_clear
+    assert observation.terrain_los_clear is False
+    assert not observation.visible
+
+
+def test_terrain_los_through_body_centre_is_blocked() -> None:
+    terrain = RegularLatLonTerrain(
+        np.array([-90.0, 0.0, 90.0]), np.array([0.0, 180.0, 360.0]),
+        np.zeros((3, 3)), reference_radius_m=1.0, frame=FRAME,
+    )
+    observation = site_observation(
+        0.0, [-4.0, 0.0, 0.0],
+        LunarSurfaceSite("elevated", 0.0, 0.0, elevation_m=3.0, reference_radius_m=1.0, frame=FRAME),
+        IDENTITY, body_fixed_frame=FRAME, minimum_elevation_deg=-90.0,
+        terrain=terrain, terrain_aware=True, terrain_los_samples=3,
+    )
+    assert observation.terrain_los_clear is False
+    assert not observation.visible
+
+
+@pytest.mark.parametrize("angle_offset, expected_clear", [(-1e-5, True), (1e-5, False)])
+def test_terrain_los_resolves_shallow_spherical_limb_crossing(angle_offset, expected_clear) -> None:
+    terrain = RegularLatLonTerrain(
+        np.array([-90.0, 0.0, 90.0]), np.array([0.0, 180.0, 360.0]),
+        np.zeros((3, 3)), reference_radius_m=R, frame=FRAME,
+    )
+    site = LunarSurfaceSite("elevated", 0.0, 0.0, elevation_m=1000.0, frame=FRAME)
+    # At the sum of the two horizon angles the ray is tangent. A 1e-5 rad
+    # increment puts its closest point about half a metre below the surface,
+    # between the default 128 uniformly spaced interior samples.
+    angle = np.arccos(R / (R + 1000.0)) + np.arccos(R / (R + 100_000.0)) + angle_offset
+    spacecraft = _position(0.0, np.rad2deg(angle), 100_000.0)
+    observation = site_observation(
+        0.0, spacecraft, site, IDENTITY, body_fixed_frame=FRAME,
+        minimum_elevation_deg=-5.0, terrain=terrain, terrain_aware=True,
+    )
+    direction = spacecraft - site.position_body_fixed_m
+    fraction = -np.dot(site.position_body_fixed_m, direction) / np.dot(direction, direction)
+    closest_clearance = np.linalg.norm(site.position_body_fixed_m + fraction * direction) - R
+    assert 0.0 < fraction < 1.0
+    assert bool(closest_clearance > 0.0) is expected_clear
+    assert observation.spherical_los_clear is expected_clear
+    assert observation.terrain_los_clear is expected_clear
+    assert observation.visible is expected_clear
+
+
+@pytest.mark.parametrize("analysis", ["instant", "single", "multiple"])
+@pytest.mark.parametrize("margin", [np.nan, np.inf, -np.inf, -1.0])
+def test_access_rejects_invalid_clearance_margins(analysis: str, margin: float) -> None:
+    terrain = RegularLatLonTerrain(
+        np.array([-90.0, 0.0, 90.0]),
+        np.array([0.0, 5.0, 10.0, 360.0]),
+        np.array([[0.0] * 4, [0.0, 120_000.0, 0.0, 0.0], [0.0] * 4]),
+        reference_radius_m=R, frame=FRAME,
+    )
+    site = LunarSurfaceSite("site", 0.0, 0.0, frame=FRAME)
+    position = _position(0.0, 10.0, 100_000.0)
+    options = dict(
+        body_fixed_frame=FRAME, terrain=terrain, terrain_aware=True,
+        terrain_clearance_margin_m=margin,
+    )
+    with pytest.raises(ValueError, match="terrain_clearance_margin_m"):
+        if analysis == "instant":
+            site_observation(0.0, position, site, IDENTITY, **options)
+        elif analysis == "single":
+            analyze_site_access([0.0, 1.0], [position, position], site, IDENTITY, **options)
+        else:
+            analyze_multiple_site_access(
+                [0.0, 1.0], [position, position], [site], IDENTITY, **options,
+            )
+
+
+@pytest.mark.parametrize("minimum_elevation", [np.nan, np.inf, -91.0, 91.0])
+def test_multiple_site_access_rejects_invalid_elevation_masks(minimum_elevation: float) -> None:
+    position = _position(0.0, 0.0, 100_000.0)
+    with pytest.raises(ValueError, match="minimum_elevation_deg"):
+        analyze_multiple_site_access(
+            [0.0, 1.0], [position, position],
+            [LunarSurfaceSite("site", 0.0, 0.0, frame=FRAME)], IDENTITY,
+            body_fixed_frame=FRAME, minimum_elevation_deg=minimum_elevation,
+        )
+
+
+@pytest.mark.parametrize("samples", [1, 2.5, True])
+def test_access_rejects_invalid_terrain_sample_counts(samples) -> None:
+    with pytest.raises(ValueError, match="terrain_los_samples"):
+        site_observation(
+            0.0, _position(0.0, 0.0, 100_000.0),
+            LunarSurfaceSite("site", 0.0, 0.0, frame=FRAME), IDENTITY,
+            body_fixed_frame=FRAME, terrain_los_samples=samples,
+        )
+
+
+def test_coverage_uses_physical_terrain_radius_with_a_different_grid_datum() -> None:
+    terrain = RegularLatLonTerrain(
+        np.array([-90.0, 0.0, 90.0]),
+        np.array([0.0, 180.0, 360.0]),
+        np.full((3, 3), 1000.0),
+        reference_radius_m=R + 5000.0, frame=FRAME,
+    )
+    position = _position(0.0, 5.0, 100_000.0)
+    expected = site_observation(
+        0.0, position,
+        LunarSurfaceSite("physical site", 0.0, 0.0, elevation_m=6000.0, frame=FRAME),
+        IDENTITY, body_fixed_frame=FRAME,
+    )
+    coverage = coverage_analysis(
+        [0.0, 100.0], [position, position],
+        CoverageGrid(np.array([0.0]), np.array([0.0]), FRAME, R),
+        IDENTITY, body_fixed_frame=FRAME, terrain=terrain,
+    )
+    assert coverage.maximum_elevation_deg[0, 0] == pytest.approx(expected.elevation_deg)
+    assert coverage.dwell_time_s[0, 0] == pytest.approx(100.0)

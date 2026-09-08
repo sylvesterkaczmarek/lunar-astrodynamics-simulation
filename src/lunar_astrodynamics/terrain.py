@@ -13,7 +13,7 @@ from scipy.integrate import solve_ivp
 from scipy.optimize import minimize_scalar
 
 from .frames import RotationProvider, validate_rotation_matrix
-from .propagation import AccelerationFunction, PropagationSettings
+from .propagation import AccelerationFunction, PropagationSettings, _evaluate_acceleration
 
 FloatArray = NDArray[np.float64]
 
@@ -73,9 +73,9 @@ class RegularLatLonTerrain:
         if not np.isfinite(self.reference_radius_m) or self.reference_radius_m <= 0.0:
             raise ValueError("reference_radius_m must be finite and positive")
         if registration == "gridline":
-            if not np.isclose(lat[0], -90.0, atol=1e-8) or not np.isclose(lat[-1], 90.0, atol=1e-8):
+            if not np.isclose(lat[0], -90.0, rtol=0.0, atol=1e-8) or not np.isclose(lat[-1], 90.0, rtol=0.0, atol=1e-8):
                 raise ValueError("global gridline terrain must include -90 and +90 degrees")
-            if not np.isclose(lon[0], 0.0, atol=1e-8) or not np.isclose(lon[-1], 360.0, atol=1e-8):
+            if not np.isclose(lon[0], 0.0, rtol=0.0, atol=1e-8) or not np.isclose(lon[-1], 360.0, rtol=0.0, atol=1e-8):
                 raise ValueError("global gridline terrain must include 0 and 360 degrees")
             if not np.allclose(elevation[:, 0], elevation[:, -1], rtol=0.0, atol=1e-6):
                 raise ValueError("gridline 0 and 360 degree terrain boundary columns must match")
@@ -131,7 +131,7 @@ class RegularLatLonTerrain:
         if latitude_deg < -90.0 - 1e-10 or latitude_deg > 90.0 + 1e-10:
             raise ValueError("latitude must lie within [-90, 90] degrees")
         latitude_deg = float(np.clip(latitude_deg, -90.0, 90.0))
-        if np.isclose(abs(latitude_deg), 90.0, atol=1e-12):
+        if np.isclose(abs(latitude_deg), 90.0, rtol=0.0, atol=1e-12):
             row = self.elevation_grid_m[-1] if latitude_deg > 0.0 else self.elevation_grid_m[0]
             if self.registration == "gridline":
                 row = row[:-1]
@@ -150,9 +150,9 @@ class RegularLatLonTerrain:
         right = int(np.searchsorted(lat, latitude_deg, side="right"))
         right = min(max(right, 1), lat.size - 1)
         left = right - 1
-        if np.isclose(latitude_deg, lat[left], atol=1e-14):
+        if np.isclose(latitude_deg, lat[left], rtol=0.0, atol=1e-14):
             return self._longitude_interpolate(self.elevation_grid_m[left], longitude_deg)
-        if np.isclose(latitude_deg, lat[right], atol=1e-14):
+        if np.isclose(latitude_deg, lat[right], rtol=0.0, atol=1e-14):
             return self._longitude_interpolate(self.elevation_grid_m[right], longitude_deg)
         weight = (latitude_deg - lat[left]) / (lat[right] - lat[left])
         lower = self._longitude_interpolate(self.elevation_grid_m[left], longitude_deg)
@@ -261,6 +261,8 @@ def _clearance_at_solution_time(solution: Any, time_s: float, terrain: TerrainSh
 def analyze_terrain_clearance(solution: Any, terrain: TerrainShapeModel, terrain_body_fixed_from_inertial: RotationProvider, *, terrain_frame: str, search_samples: int = 2049) -> TerrainClearanceReport:
     """Find minimum terrain clearance and impact geometry from a dense solution."""
     _validate_terrain_frame(terrain, terrain_frame)
+    if not solution.success:
+        raise RuntimeError(f"terrain propagation failed: {solution.message}")
     if search_samples < 3:
         raise ValueError("search_samples must be at least three")
     if solution.sol is None:
@@ -312,10 +314,12 @@ def propagate_with_terrain(initial_state: ArrayLike, duration_s: float, accelera
     def rhs(time_s: float, state: FloatArray) -> FloatArray:
         derivative = np.empty(6, dtype=float)
         derivative[:3] = state[3:]
-        derivative[3:] = acceleration(time_s, state[:3])
+        derivative[3:] = _evaluate_acceleration(acceleration, time_s, state[:3])
         return derivative
     event = make_terrain_impact_event(terrain, terrain_body_fixed_from_inertial, terrain_frame=terrain_frame)
     solution = solve_ivp(rhs, (0.0, float(duration_s)), state0, method=settings.method, t_eval=times, rtol=settings.rtol, atol=settings.atol, max_step=settings.max_step_s, events=event, dense_output=True)
+    if not solution.success:
+        raise RuntimeError(f"terrain propagation failed: {solution.message}")
     report = analyze_terrain_clearance(solution, terrain, terrain_body_fixed_from_inertial, terrain_frame=terrain_frame, search_samples=clearance_search_samples)
     return TerrainPropagationResult(solution=solution, clearance=report)
 

@@ -357,10 +357,22 @@ def _terrain_los_clear(
 ) -> bool:
     if samples < 2:
         raise ValueError("terrain_los_samples must be at least two")
-    fractions = np.linspace(0.0, 1.0, int(samples) + 2)[1:-1]
+    # The site may lie on the surface, but the spacecraft endpoint must clear
+    # it too. Interior samples alone can miss a spacecraft buried in a ridge.
+    fractions = np.linspace(0.0, 1.0, int(samples) + 2)[1:]
     direction = spacecraft_position_m - site_position_m
+    # Uniform samples can straddle a shallow limb penetration. Include the
+    # exact minimum-radius point so a spherical terrain model retains its
+    # analytic line-of-sight limit, without imposing a separate height datum.
+    norm2 = float(np.dot(direction, direction))
+    if norm2 > 0.0:
+        closest_fraction = float(-np.dot(site_position_m, direction) / norm2)
+        if 0.0 < closest_fraction < 1.0:
+            fractions = np.append(fractions, closest_fraction)
     for fraction in fractions:
         point = site_position_m + float(fraction) * direction
+        if np.linalg.norm(point) == 0.0:
+            return False
         radius, latitude, longitude = _body_fixed_lat_lon_radius(point)
         lookup_longitude = 0.0 if longitude is None else longitude
         if radius <= terrain.surface_radius_m(latitude, lookup_longitude) + clearance_margin_m:
@@ -410,11 +422,10 @@ def _observation_from_body_fixed(
             samples=terrain_los_samples,
             clearance_margin_m=terrain_clearance_margin_m,
         )
-    visible = (
-        elevation >= minimum_elevation_deg
-        and spherical_clear
-        and (terrain_clear is not False)
-    )
+    # A reference sphere is a height datum, not an additional obstacle when
+    # physical terrain is available. Lunar depressions can lie below it.
+    los_clear = terrain_clear if terrain_aware else spherical_clear
+    visible = elevation >= minimum_elevation_deg and los_clear
     return SiteObservation(
         time_s=float(time_s),
         visible=bool(visible),
@@ -423,6 +434,33 @@ def _observation_from_body_fixed(
         spherical_los_clear=spherical_clear,
         terrain_los_clear=terrain_clear,
     )
+
+
+def _validate_site_access_options(
+    *,
+    body_fixed_frame: str,
+    minimum_elevation_deg: float,
+    terrain: TerrainShapeModel | None,
+    terrain_aware: bool,
+    terrain_los_samples: int,
+    terrain_clearance_margin_m: float,
+) -> None:
+    if not np.isfinite(minimum_elevation_deg) or not -90.0 <= minimum_elevation_deg <= 90.0:
+        raise ValueError("minimum_elevation_deg must lie within [-90, 90]")
+    if not np.isfinite(terrain_clearance_margin_m) or terrain_clearance_margin_m < 0.0:
+        raise ValueError("terrain_clearance_margin_m must be finite and non-negative")
+    if (
+        isinstance(terrain_los_samples, (bool, np.bool_))
+        or not isinstance(terrain_los_samples, (int, np.integer))
+        or terrain_los_samples < 2
+    ):
+        raise ValueError("terrain_los_samples must be an integer of at least two")
+    if terrain_aware and terrain is None:
+        raise ValueError("terrain-aware line of sight requires a terrain model")
+    if terrain is not None and terrain.frame != body_fixed_frame:
+        raise ValueError(
+            f"terrain frame mismatch: terrain is '{terrain.frame}' but access frame is '{body_fixed_frame}'"
+        )
 
 
 def site_observation(
@@ -441,7 +479,7 @@ def site_observation(
     """Evaluate instantaneous site-to-spacecraft access geometry.
 
     The default is a radial local-horizon plus spherical-limb test. When
-    ``terrain_aware`` is enabled, the straight line of sight is additionally
+    ``terrain_aware`` is enabled, the straight line of sight is instead
     sampled against the supplied radial terrain model. This is not a DSK mesh
     ray trace and cannot recover relief below the terrain grid resolution.
     """
@@ -449,10 +487,16 @@ def site_observation(
         raise ValueError(
             f"site frame mismatch: site is '{site.frame}' but rotation was declared for '{body_fixed_frame}'"
         )
-    if not np.isfinite(minimum_elevation_deg) or not -90.0 <= minimum_elevation_deg <= 90.0:
-        raise ValueError("minimum_elevation_deg must lie within [-90, 90]")
-    if not np.isfinite(terrain_clearance_margin_m) or terrain_clearance_margin_m < 0.0:
-        raise ValueError("terrain_clearance_margin_m must be finite and non-negative")
+    _validate_site_access_options(
+        body_fixed_frame=body_fixed_frame,
+        minimum_elevation_deg=minimum_elevation_deg,
+        terrain=terrain,
+        terrain_aware=terrain_aware,
+        terrain_los_samples=terrain_los_samples,
+        terrain_clearance_margin_m=terrain_clearance_margin_m,
+    )
+    if not np.isfinite(time_s):
+        raise ValueError("time_s must be finite")
     position = np.asarray(spacecraft_position_inertial_m, dtype=float)
     if position.shape != (3,) or not np.all(np.isfinite(position)):
         raise ValueError("spacecraft position must be a finite three-vector")
@@ -615,14 +659,14 @@ def analyze_site_access(
         raise ValueError(
             f"site frame mismatch: site is '{site.frame}' but rotation was declared for '{body_fixed_frame}'"
         )
-    if terrain is not None and terrain.frame != body_fixed_frame:
-        raise ValueError(
-            f"terrain frame mismatch: terrain is '{terrain.frame}' but access frame is '{body_fixed_frame}'"
-        )
-    if terrain_aware and terrain is None:
-        raise ValueError("terrain-aware line of sight requires a terrain model")
-    if not np.isfinite(minimum_elevation_deg) or not -90.0 <= minimum_elevation_deg <= 90.0:
-        raise ValueError("minimum_elevation_deg must lie within [-90, 90]")
+    _validate_site_access_options(
+        body_fixed_frame=body_fixed_frame,
+        minimum_elevation_deg=minimum_elevation_deg,
+        terrain=terrain,
+        terrain_aware=terrain_aware,
+        terrain_los_samples=terrain_los_samples,
+        terrain_clearance_margin_m=terrain_clearance_margin_m,
+    )
     times = _times(time_s)
     positions = _positions(positions_inertial_m, times.size)
     body_fixed = _body_fixed_positions(times, positions, body_fixed_from_inertial)
@@ -698,6 +742,14 @@ def analyze_multiple_site_access(
         raise ValueError("at least one lunar surface site is required")
     if len({site.name for site in sites}) != len(sites):
         raise ValueError("site names must be unique")
+    _validate_site_access_options(
+        body_fixed_frame=body_fixed_frame,
+        minimum_elevation_deg=minimum_elevation_deg,
+        terrain=terrain,
+        terrain_aware=terrain_aware,
+        terrain_los_samples=terrain_los_samples,
+        terrain_clearance_margin_m=terrain_clearance_margin_m,
+    )
     for site in sites:
         if site.frame != body_fixed_frame:
             raise ValueError(
@@ -929,7 +981,8 @@ def coverage_analysis(
             elevation_m = 0.0
             if terrain is not None:
                 elevation_m = float(
-                    terrain.elevation_m(np.deg2rad(latitude), np.deg2rad(longitude))
+                    terrain.surface_radius_m(np.deg2rad(latitude), np.deg2rad(longitude))
+                    - grid.reference_radius_m
                 )
             site = LunarSurfaceSite(
                 name=f"coverage[{i},{j}]",

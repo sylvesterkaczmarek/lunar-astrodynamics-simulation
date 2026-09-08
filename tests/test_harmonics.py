@@ -343,6 +343,15 @@ def test_shadr_parser_rejects_nonzero_reference_origin() -> None:
         read_shadr(StringIO(text))
 
 
+@pytest.mark.parametrize("coordinate", ["reference_longitude_deg", "reference_latitude_deg"])
+@pytest.mark.parametrize("value", [np.nan, np.inf, -np.inf])
+def test_shadr_parser_rejects_nonfinite_reference_origin(coordinate: str, value: float) -> None:
+    text = _pds_header_record(degree=2, order=2, **{coordinate: value})
+    text += _pds_coefficient_record(2, 0, -9.0e-5, 0.0)
+    with pytest.raises(ValueError, match="invalid SHADR header values"):
+        read_shadr(StringIO(text))
+
+
 def test_shadr_parser_rejects_malformed_coefficient_rows() -> None:
     malformed = "bad row" + " " * 113 + "\r\n"
     text = _pds_header_record(degree=2, order=2) + malformed
@@ -355,6 +364,24 @@ def test_shadr_parser_rejects_duplicate_coefficients() -> None:
     text = _pds_header_record(degree=2, order=2) + row + row
     with pytest.raises(ValueError, match="duplicate"):
         read_shadr(StringIO(text))
+
+
+def test_shadr_parser_validates_duplicate_rows_above_requested_truncation() -> None:
+    row = _pds_coefficient_record(3, 1, 4e-6, 5e-6)
+    text = _pds_header_record() + row + row
+    with pytest.raises(ValueError, match=r"duplicate SHADR coefficient \(3, 1\)"):
+        read_shadr(StringIO(text), max_degree=2)
+
+
+def test_shadr_parser_reports_actual_file_record_number() -> None:
+    text = _pds_header_record() + "bad row\n"
+    with pytest.raises(ValueError, match="coefficient record 2 is too short"):
+        read_shadr(StringIO(text))
+
+
+def test_model_rejects_empty_coefficients_with_a_validation_error() -> None:
+    with pytest.raises(ValueError, match="non-empty square coefficient arrays"):
+        SphericalHarmonicModel(4.9028e12, 1.738e6, np.empty((0, 0)), np.empty((0, 0)))
 
 
 def test_model_copies_and_write_protects_coefficients() -> None:

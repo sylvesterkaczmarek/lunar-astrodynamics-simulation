@@ -198,3 +198,170 @@ def test_shadr_mission_retains_full_model_for_fidelity(monkeypatch, tmp_path: Pa
     assert retained.max_degree == 4
     assert dynamics.harmonic_degree == 2
     assert dynamics.harmonic_order == 2
+
+
+def _spice_config(tmp_path: Path, *, kernels=None, **spice_options):
+    mapping = _mapping()
+    kernel = tmp_path / "mission.tf"
+    kernel.write_text("KPL/FK\n\\begindata\nMISSION_TEST_VALUE = 42\n\\begintext\n")
+    mapping["spice"] = {
+        "enabled": True,
+        "kernels": [str(kernel)] if kernels is None else kernels,
+        "surface_frame": "IAU_MOON",
+        **spice_options,
+    }
+    return mission_config_from_mapping(mapping)
+
+
+def _fake_spice_epoch(monkeypatch):
+    monkeypatch.setattr(
+        mission_module, "spice_ephemeris_from_utc",
+        lambda *args, **kwargs: SimpleNamespace(epoch_et_s=0.0),
+    )
+
+
+def test_mission_close_preserves_callers_kernels_and_is_idempotent(tmp_path, monkeypatch):
+    spice = pytest.importorskip("spiceypy")
+    config = _spice_config(tmp_path)
+    _fake_spice_epoch(monkeypatch)
+    path = str(config.spice.kernels[0])
+    # A caller and two sequential contexts can use the same file.
+    spice.furnsh(path)
+    before = spice.ktotal("ALL")
+    first = second = None
+    try:
+        first = build_mission_context(config)
+        second = build_mission_context(config)
+        assert spice.ktotal("ALL") == before + 2
+        second.close()
+        second.close()
+        assert spice.ktotal("ALL") == before + 1
+        first.close()
+        assert spice.ktotal("ALL") == before
+        assert spice.gdpool("MISSION_TEST_VALUE", 0, 1)[0] == 42
+    finally:
+        if second is not None:
+            second.close()
+        if first is not None:
+            first.close()
+        spice.unload(path)
+
+
+@pytest.mark.parametrize("failure", ["missing_kernel", "initial_state", "partial_meta_kernel"])
+def test_failed_mission_setup_preserves_callers_kernels(tmp_path, monkeypatch, failure):
+    spice = pytest.importorskip("spiceypy")
+    config = _spice_config(tmp_path)
+    _fake_spice_epoch(monkeypatch)
+    path = str(config.spice.kernels[0])
+    spice.furnsh(path)
+    before = spice.ktotal("ALL")
+    try:
+        if failure == "missing_kernel":
+            config = _spice_config(tmp_path, kernels=[path, str(tmp_path / "missing.tf")])
+        elif failure == "partial_meta_kernel":
+            meta = tmp_path / "partial.tm"
+            meta.write_text(
+                "KPL/MK\n\\begindata\nKERNELS_TO_LOAD = (\n'"
+                + path + "',\n'" + str(tmp_path / "missing.tf") + "'\n)\n\\begintext\n"
+            )
+            config = _spice_config(tmp_path, kernels=[str(meta)])
+        else:
+            monkeypatch.setattr(mission_module, "_initial_state", lambda *args: (_ for _ in ()).throw(ValueError("bad state")))
+        with pytest.raises(Exception):
+            build_mission_context(config)
+        assert spice.ktotal("ALL") == before
+        assert spice.gdpool("MISSION_TEST_VALUE", 0, 1)[0] == 42
+    finally:
+        spice.unload(path)
+
+
+@pytest.mark.parametrize("failure", ["malformed_text", "partial_meta_kernel", "initial_state"])
+def test_failed_mission_setup_restores_callers_kernel_pool(tmp_path, monkeypatch, failure):
+    spice = pytest.importorskip("spiceypy")
+    _fake_spice_epoch(monkeypatch)
+    caller = tmp_path / "caller.tf"
+    caller.write_text(
+        "KPL/FK\n\\begindata\n"
+        "MISSION_CALLER_NUMERIC = 1\n"
+        "MISSION_CALLER_STRING = 'from file'\n\\begintext\n"
+    )
+    spice.furnsh(str(caller))
+    # Caller overrides must survive reloading text kernels during UNLOAD.
+    spice.pdpool("MISSION_CALLER_NUMERIC", [1.25, -3.0])
+    spice.pcpool("MISSION_CALLER_STRING", ["caller", "override"])
+    before = spice.ktotal("ALL")
+    mission_kernel = tmp_path / "overrides.tf"
+    assignments = (
+        "KPL/FK\n\\begindata\n"
+        "MISSION_CALLER_NUMERIC = (99, 100)\n"
+        "MISSION_CALLER_STRING = ('mission', 'replacement')\n"
+        "MISSION_NEW_NUMBER = 77\n"
+        "MISSION_NEW_STRING = 'temporary'\n"
+    )
+    if failure == "malformed_text":
+        # FURNSH retains the valid assignments, but never registers this file.
+        mission_kernel.write_text(assignments + "BROKEN_VALUE = (1, 'unterminated\n")
+        kernels = [str(mission_kernel)]
+        expected_error = spice.SpiceTYPEMISMATCH
+    elif failure == "partial_meta_kernel":
+        mission_kernel.write_text(assignments + "\\begintext\n")
+        meta = tmp_path / "partial_pool.tm"
+        meta.write_text(
+            "KPL/MK\n\\begindata\nKERNELS_TO_LOAD = (\n'"
+            + str(mission_kernel) + "',\n'" + str(tmp_path / "missing.tf") + "'\n)\n\\begintext\n"
+        )
+        kernels = [str(meta)]
+        expected_error = spice.SpiceNOSUCHFILE
+    else:
+        mission_kernel.write_text(assignments + "\\begintext\n")
+        kernels = [str(mission_kernel)]
+        expected_error = ValueError
+        monkeypatch.setattr(
+            mission_module, "_initial_state",
+            lambda *args: (_ for _ in ()).throw(ValueError("bad state")),
+        )
+    try:
+        with pytest.raises(expected_error):
+            build_mission_context(_spice_config(tmp_path, kernels=kernels))
+        assert spice.ktotal("ALL") == before
+        assert spice.kdata(before - 1, "ALL")[0] == str(caller)
+        np.testing.assert_array_equal(spice.gdpool("MISSION_CALLER_NUMERIC", 0, 2), [1.25, -3.0])
+        assert spice.gcpool("MISSION_CALLER_STRING", 0, 2) == ["caller", "override"]
+        for name in ("MISSION_NEW_NUMBER", "MISSION_NEW_STRING"):
+            with pytest.raises(spice.NotFoundError):
+                spice.dtpool(name)
+    finally:
+        spice.unload(str(caller))
+        for name in ("MISSION_CALLER_NUMERIC", "MISSION_CALLER_STRING", "MISSION_NEW_NUMBER", "MISSION_NEW_STRING"):
+            spice.dvpool(name)
+
+
+@pytest.mark.parametrize("options, message", [
+    ({"observer": "EARTH"}, "observer"),
+    ({"inertial_frame": "IAU_MOON"}, "inertial"),
+    ({"inertial_frame": "UNKNOWN_TEST_FRAME"}, "inertial"),
+])
+def test_mission_rejects_incompatible_spice_origin_and_axes(tmp_path, monkeypatch, options, message):
+    spice = pytest.importorskip("spiceypy")
+    config = _spice_config(tmp_path, **options)
+    _fake_spice_epoch(monkeypatch)
+    before = spice.ktotal("ALL")
+    with pytest.raises(ValueError, match=message):
+        build_mission_context(config)
+    assert spice.ktotal("ALL") == before
+
+
+def test_mission_accepts_moon_id_and_alternative_inertial_frame(tmp_path, monkeypatch):
+    pytest.importorskip("spiceypy")
+    _fake_spice_epoch(monkeypatch)
+    context = build_mission_context(_spice_config(tmp_path, observer="301", inertial_frame="ECLIPJ2000"))
+    context.close()
+
+
+def test_terrain_frame_override_cannot_bypass_surface_rotation_check(tmp_path, monkeypatch):
+    mapping = _mapping()
+    mapping["terrain"] = {"kind": "npz", "path": str(tmp_path / "terrain.npz"), "frame": "MOON_PA_DE421"}
+    config = mission_config_from_mapping(mapping)
+    monkeypatch.setattr(mission_module, "load_terrain_npz", lambda _: SimpleNamespace(frame="MOON_PA_DE421"))
+    with pytest.raises(ValueError, match="must match configured surface frame"):
+        mission_module._load_terrain(config, "MOON_ME_DE421")

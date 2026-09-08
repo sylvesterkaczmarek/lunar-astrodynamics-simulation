@@ -1,4 +1,5 @@
 import json
+from dataclasses import replace
 
 import numpy as np
 import pytest
@@ -257,3 +258,44 @@ def test_harmonic_search_records_selected_degree_and_exports_json_csv(tmp_path) 
     assert payload["dynamics"]["harmonic_degree"] == 2
     assert payload["candidates"][0]["metrics"]["periselene_altitude_peak_to_peak_m"] is not None
     assert "candidate_id" in csv_path.read_text(encoding="utf-8").splitlines()[0]
+
+
+@pytest.mark.parametrize("apply_to_uncertainty", [True, False])
+def test_uncertainty_reference_altitude_constraint_is_enforced(apply_to_uncertainty) -> None:
+    dynamics = j2_search_dynamics(include_j2=False)
+    perturbed = replace(
+        dynamics, name="one percent stronger central field",
+        acceleration=lambda time, position: 1.01 * dynamics.acceleration(time, position),
+    )
+    result = run_stability_search(
+        _space(eccentricities=(0.0,)), dynamics,
+        settings=_settings(constraints=StabilityConstraints(
+            minimum_reference_altitude_m=99_000.0,
+            apply_to_uncertainty=apply_to_uncertainty,
+        )),
+        uncertainty_dynamics=(perturbed,),
+    )
+    candidate = result.candidates[0]
+    assert candidate.metrics.minimum_reference_altitude_m > 99_000.0
+    assert candidate.uncertainty_summary.minimum_reference_altitude_m < 99_000.0
+    assert candidate.passed_constraints is (not apply_to_uncertainty)
+    if apply_to_uncertainty:
+        assert "uncertainty minimum reference-radius altitude below constraint" in candidate.constraint_violations
+
+
+def test_stability_search_rejects_failed_partial_propagation(monkeypatch) -> None:
+    from lunar_astrodynamics import stability
+    from lunar_astrodynamics.propagation import propagate_with_acceleration
+
+    dynamics = j2_search_dynamics(include_j2=False)
+    point = _space().points(dynamics.analysis_reference_radius_m)[0]
+    partial = propagate_with_acceleration(
+        point.initial_state(MU), 30.0, dynamics.acceleration,
+        collision_radius_m=dynamics.collision_radius_m,
+        sample_times_s=[0.0, 15.0, 30.0],
+    )
+    partial.success = False
+    partial.message = "Required step size is less than spacing between numbers."
+    monkeypatch.setattr(stability, "propagate_with_acceleration", lambda *args, **kwargs: partial)
+    with pytest.raises(ValueError, match="stability-search propagation failed"):
+        run_stability_search(_space(), dynamics, settings=_settings())

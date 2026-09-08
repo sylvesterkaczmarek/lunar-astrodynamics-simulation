@@ -425,14 +425,23 @@ def _trajectory_metrics(
     reference_radius_m: float,
     requested_duration_s: float,
 ) -> OrbitUncertaintySample:
+    if not solution.success:  # type: ignore[attr-defined]
+        raise ValueError(
+            f"gravity ensemble propagation failed for {model_name}: {solution.message}"  # type: ignore[attr-defined]
+        )
     states = np.asarray(solution.y, dtype=float)  # type: ignore[attr-defined]
+    event_times = solution.t_events[0]  # type: ignore[attr-defined]
+    impacted = bool(len(event_times))
+    if impacted:
+        # solve_ivp returns requested output epochs in y; an impact between
+        # those epochs is recorded separately in y_events.
+        event_state = np.asarray(solution.y_events[0][0], dtype=float)  # type: ignore[attr-defined]
+        states = np.column_stack((states, event_state))
     radii = np.linalg.norm(states[:3], axis=0)
     altitude = radii - reference_radius_m
     eccentricity, periselene, aposelene = _eccentricity_and_apsides(
         states, mu_m3_s2, reference_radius_m
     )
-    event_times = solution.t_events[0]  # type: ignore[attr-defined]
-    impacted = bool(len(event_times))
     lifetime_s = float(event_times[0]) if impacted else float(requested_duration_s)
     finite_periselene = periselene[np.isfinite(periselene)]
     finite_aposelene = aposelene[np.isfinite(aposelene)]
@@ -509,17 +518,39 @@ def propagate_gravity_ensemble(
     settings: PropagationSettings = PropagationSettings(),
     percentile_levels: Sequence[float] = (5.0, 50.0, 95.0),
 ) -> EnsembleUncertaintyResult:
-    """Propagate one initial state through several compatible gravity realizations."""
+    """Propagate one initial state through several compatible gravity realizations.
+
+    Metrics include the initial and terminal states, even when custom output
+    times omit them. Any failed integration aborts the ensemble summary.
+    """
     if not models:
         raise ValueError("at least one gravity realization is required")
     if len({model.frame for model in models}) != 1:
         raise ValueError("all gravity realizations must use the same body-fixed frame")
+    if not np.isfinite(duration_s) or duration_s <= 0.0:
+        raise ValueError("duration_s must be finite and positive")
+    if not np.isfinite(reference_radius_m) or reference_radius_m <= 0.0:
+        raise ValueError("reference_radius_m must be finite and positive")
     if sample_times_s is None:
         if sample_count < 2:
             raise ValueError("sample_count must be at least two")
         sample_times = np.linspace(0.0, float(duration_s), int(sample_count))
     else:
         sample_times = np.asarray(sample_times_s, dtype=float)
+        if sample_times.ndim != 1 or sample_times.size == 0:
+            raise ValueError("sample_times_s must be a non-empty one-dimensional array")
+        if not np.all(np.isfinite(sample_times)):
+            raise ValueError("sample_times_s must contain only finite values")
+        if (
+            sample_times[0] < 0.0
+            or sample_times[-1] > duration_s
+            or np.any(np.diff(sample_times) <= 0.0)
+        ):
+            raise ValueError("sample_times_s must be strictly increasing within [0, duration_s]")
+        if sample_times[0] != 0.0:
+            sample_times = np.concatenate(([0.0], sample_times))
+        if sample_times[-1] != duration_s:
+            sample_times = np.concatenate((sample_times, [float(duration_s)]))
 
     samples: list[OrbitUncertaintySample] = []
     for model in models:

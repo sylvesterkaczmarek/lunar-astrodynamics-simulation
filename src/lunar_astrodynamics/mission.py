@@ -344,7 +344,8 @@ class MissionContext:
                 import spiceypy as spice  # type: ignore[import-not-found]
             except ImportError:
                 return
-            spice.kclear()
+            _unload_kernel_paths(spice, self.loaded_kernel_paths)
+            self.loaded_kernel_paths = ()
 
     def provenance(self) -> dict[str, object]:
         packages: dict[str, str] = {}
@@ -669,6 +670,58 @@ def mission_config_from_mapping(data: Mapping[str, Any], *, base_dir: str | Path
     )
 
 
+def _unload_kernel_paths(spice: Any, paths: Sequence[str]) -> None:
+    # UNLOAD reverses the last FURNSH of a file, including a meta-kernel's
+    # children. KCLEAR would also discard kernels owned by the caller.
+    for path in reversed(paths):
+        spice.unload(path)
+
+
+def _spice_pool_names(spice: Any) -> tuple[str, ...]:
+    names: list[str] = []
+    page_size = 256
+    while True:
+        try:
+            page = spice.gnpool("*", len(names), page_size)
+        except spice.NotFoundError:
+            break
+        # Respect callers that disable SpiceyPy's automatic found-flag check.
+        if isinstance(page, tuple):
+            page, found = page
+            if not found:
+                break
+        names.extend(str(name) for name in page)
+        if len(page) < page_size:
+            break
+    return tuple(names)
+
+
+def _snapshot_spice_pool(spice: Any) -> dict[str, tuple[str, list[Any]]]:
+    snapshot: dict[str, tuple[str, list[Any]]] = {}
+    for name in _spice_pool_names(spice):
+        count, kind = spice.dtpool(name)[:2]
+        if kind == "N":
+            values = spice.gdpool(name, 0, count)
+        else:
+            values = spice.gcpool(name, 0, count)
+        if isinstance(values, tuple):
+            values = values[0]
+        snapshot[name] = (kind, list(values))
+    return snapshot
+
+
+def _restore_spice_pool(spice: Any, snapshot: Mapping[str, tuple[str, list[Any]]]) -> None:
+    # A failed text-kernel parse can leave assignments without a registered
+    # file to UNLOAD. Restore values, including caller-supplied pool overrides.
+    for name in set(_spice_pool_names(spice)).difference(snapshot):
+        spice.dvpool(name)
+    for name, (kind, values) in snapshot.items():
+        if kind == "N":
+            spice.pdpool(name, values)
+        else:
+            spice.pcpool(name, values)
+
+
 def _load_spice(config: MissionConfig) -> tuple[SpiceEphemeris | None, RotationProvider, str, tuple[str, ...]]:
     if not config.spice.enabled:
         if config.gravity.model == "shadr":
@@ -683,7 +736,29 @@ def _load_spice(config: MissionConfig) -> tuple[SpiceEphemeris | None, RotationP
         for kernel in config.spice.kernels:
             if not kernel.exists():
                 raise FileNotFoundError(f"SPICE kernel not found: {kernel}")
-            spice.furnsh(str(kernel)); loaded.append(str(kernel))
+            path = str(kernel)
+            prior_count = sum(
+                spice.kdata(index, "ALL")[0] == path
+                for index in range(spice.ktotal("ALL"))
+            )
+            try:
+                spice.furnsh(path)
+            except Exception:
+                # A meta-kernel may be registered before one of its children
+                # fails. Undo that load without removing a pre-existing copy.
+                current_count = sum(
+                    spice.kdata(index, "ALL")[0] == path
+                    for index in range(spice.ktotal("ALL"))
+                )
+                if current_count > prior_count:
+                    spice.unload(path)
+                raise
+            loaded.append(path)
+        if spice.bods2c(config.spice.observer) != 301:
+            raise ValueError("lunar mission ephemerides require observer='MOON' (NAIF ID 301)")
+        frame_id = spice.namfrm(config.spice.inertial_frame)
+        if frame_id == 0 or spice.frinfo(frame_id)[1] != 1:
+            raise ValueError("spice.inertial_frame must name a built-in inertial (class 1) SPICE frame")
         ephemeris = spice_ephemeris_from_utc(config.epoch_utc, inertial_frame=config.spice.inertial_frame, observer=config.spice.observer)
         surface_frame = config.spice.surface_frame or config.spice.gravity_frame
         if not surface_frame:
@@ -691,7 +766,8 @@ def _load_spice(config: MissionConfig) -> tuple[SpiceEphemeris | None, RotationP
         rotation = spice_rotation_provider(config.spice.inertial_frame, surface_frame, et_offset_s=ephemeris.epoch_et_s)
         return ephemeris, rotation, surface_frame, tuple(loaded)
     except Exception:
-        spice.kclear(); raise
+        _unload_kernel_paths(spice, loaded)
+        raise
 
 
 def _load_terrain(config: MissionConfig, surface_frame: str) -> TerrainShapeModel | None:
@@ -706,6 +782,11 @@ def _load_terrain(config: MissionConfig, surface_frame: str) -> TerrainShapeMode
         assert terrain.image_path is not None and terrain.label_path is not None
         model = load_lola_pds_global_gdr(terrain.image_path, terrain.label_path)
     requested_frame = terrain.frame or surface_frame
+    if requested_frame != surface_frame:
+        raise ValueError(
+            f"terrain frame '{requested_frame}' must match configured surface frame '{surface_frame}'; "
+            "the mission workflow uses that frame's rotation for terrain queries"
+        )
     if model.frame == requested_frame: return model
     if model.frame == "MEAN EARTH/POLAR AXIS OF DE421" and requested_frame == "MOON_ME_DE421":
         return RegularLatLonTerrain(model.latitude_deg, model.longitude_deg_east, model.elevation_grid_m, reference_radius_m=model.reference_radius_m, name=model.name, frame=requested_frame, registration=model.registration, source=model.source)
@@ -795,8 +876,18 @@ def _build_sites(config: MissionConfig, terrain: TerrainShapeModel | None, surfa
 
 
 def build_mission_context(config: MissionConfig) -> MissionContext:
-    ephemeris, rotation, surface_frame, loaded = _load_spice(config)
+    spice = None
+    pool_before = None
+    if config.spice.enabled:
+        try:
+            import spiceypy as spice  # type: ignore[import-not-found, no-redef]
+        except ImportError:
+            pass  # _load_spice supplies the optional-dependency error below.
+        else:
+            pool_before = _snapshot_spice_pool(spice)
+    loaded: tuple[str, ...] = ()
     try:
+        ephemeris, rotation, surface_frame, loaded = _load_spice(config)
         terrain = _load_terrain(config, surface_frame)
         additional = _build_additional_forces(config, ephemeris)
         dynamics, gravity_model = _build_dynamics(config, ephemeris, additional)
@@ -804,11 +895,12 @@ def build_mission_context(config: MissionConfig) -> MissionContext:
         sites = _build_sites(config, terrain, surface_frame)
         return MissionContext(config, state, dynamics, rotation, surface_frame, ephemeris, terrain, sites, gravity_model, tuple(additional), loaded)
     except Exception:
-        if loaded:
+        if spice is not None:
             try:
-                import spiceypy as spice  # type: ignore[import-not-found]
-                spice.kclear()
-            except ImportError: pass
+                _unload_kernel_paths(spice, loaded)
+            finally:
+                if pool_before is not None:
+                    _restore_spice_pool(spice, pool_before)
         raise
 
 

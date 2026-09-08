@@ -1,4 +1,5 @@
 from io import StringIO
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -310,3 +311,73 @@ def test_gravity_ensemble_propagates_same_initial_state_through_realizations() -
     assert all(np.isfinite(sample.minimum_altitude_m) for sample in result.samples)
     assert all(np.isfinite(sample.maximum_eccentricity) for sample in result.samples)
     assert set(result.percentiles["minimum_altitude_m"]) == {5.0, 50.0, 95.0}
+
+
+@pytest.mark.parametrize("output_times", [None, [100.0, 600.0]])
+def test_ensemble_metrics_include_impact_before_next_requested_sample(output_times) -> None:
+    radius = MOON_MEAN_RADIUS_M
+    model = SphericalHarmonicModel(
+        4.9028e12, radius, np.array([[1.0]]), np.array([[0.0]])
+    )
+    initial = np.array([radius + 1000.0, 0.0, 0.0, -20.0, 100.0, 0.0])
+    result = propagate_gravity_ensemble(
+        initial,
+        600.0,
+        [model],
+        lambda _time_s: np.eye(3),
+        sample_count=2,
+        sample_times_s=output_times,
+    )
+    sample = result.samples[0]
+    assert sample.impacted
+    assert 20.0 < sample.lifetime_s < 30.0
+    assert sample.minimum_altitude_m == pytest.approx(0.0, abs=1e-6)
+    assert sample.maximum_altitude_m == pytest.approx(1000.0)
+    assert result.percentiles["minimum_altitude_m"][50.0] == pytest.approx(0.0, abs=1e-6)
+
+
+def test_ensemble_custom_sampling_includes_initial_and_final_states() -> None:
+    model = _uncertain_model()
+    radius = MOON_MEAN_RADIUS_M + 100_000.0
+    initial = np.array([radius, 0.0, 0.0, 0.0, np.sqrt(model.mu_m3_s2 / radius), 0.0])
+    custom_times = np.array([100.0])
+
+    def run(times):
+        return propagate_gravity_ensemble(
+            initial, 600.0, [model], lambda _time_s: np.eye(3), sample_times_s=times
+        ).samples[0]
+
+    expected = run([0.0, 100.0, 600.0])
+    actual = run(custom_times)
+    assert actual == expected
+    np.testing.assert_array_equal(custom_times, [100.0])
+
+
+def test_failed_propagation_cannot_enter_ensemble_statistics(monkeypatch) -> None:
+    model = _uncertain_model()
+    radius = MOON_MEAN_RADIUS_M + 100_000.0
+    initial = np.array([radius, 0.0, 0.0, 0.0, np.sqrt(model.mu_m3_s2 / radius), 0.0])
+    failed_solution = SimpleNamespace(
+        success=False,
+        message="Required step size is less than spacing between numbers.",
+        t=np.array([0.0]),
+        y=initial[:, None],
+        t_events=[np.array([])],
+    )
+    monkeypatch.setattr(
+        "lunar_astrodynamics.uncertainty.propagate_with_acceleration",
+        lambda *args, **kwargs: failed_solution,
+    )
+    with pytest.raises(ValueError, match="propagation failed for synthetic uncertain field"):
+        propagate_gravity_ensemble(initial, 600.0, [model], lambda _time_s: np.eye(3))
+
+
+@pytest.mark.parametrize("times", [[], [100.0, 50.0], [-1.0, 100.0], [0.0, 601.0], [np.nan]])
+def test_ensemble_does_not_repair_invalid_custom_sample_times(times) -> None:
+    model = _uncertain_model()
+    radius = MOON_MEAN_RADIUS_M + 100_000.0
+    initial = np.array([radius, 0.0, 0.0, 0.0, np.sqrt(model.mu_m3_s2 / radius), 0.0])
+    with pytest.raises(ValueError, match="sample_times_s"):
+        propagate_gravity_ensemble(
+            initial, 600.0, [model], lambda _time_s: np.eye(3), sample_times_s=times
+        )

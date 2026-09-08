@@ -101,6 +101,51 @@ def test_apparent_disk_shadow_transition_is_continuous_and_monotonic() -> None:
     assert np.max(np.abs(np.diff(fractions))) < 0.03
 
 
+@pytest.mark.parametrize(
+    "sun,body,separation,expected",
+    [
+        (0.00465, 1.24, 1.2353500000009299, 1.7005140770620512e-15),
+        (0.00465, 1.24, 1.23535000093, 5.378543661248088e-11),
+        (0.00465, 1.24, 1.23628, 0.05213015686908814),
+        (0.00465, 1.24, 1.24, 0.5003978874976122),
+        (0.00465, 1.24, 1.24372, 0.9480417314580792),
+        (0.00465, 1.24, 1.24464999907, 0.9999999999464159),
+        (0.00465, 0.26, 0.25628, 0.0524583572258499),
+        (0.00465, 0.26, 0.26, 0.5018976318038287),
+        (0.01, 0.005, 0.006, 0.7671958964704545),
+        (0.01, 0.01, 2e-12, 1.2732395447351626e-10),
+    ],
+)
+def test_apparent_disk_overlap_matches_high_precision_references(
+    sun: float, body: float, separation: float, expected: float
+) -> None:
+    # Frozen independent 80-decimal mpmath evaluation of the direct overlap:
+    # r_s^2 acos((d^2+r_s^2-r_b^2)/(2 d r_s))
+    # + r_b^2 acos((d^2+r_b^2-r_s^2)/(2 d r_b))
+    # - sqrt((-d+r_s+r_b)(d+r_s-r_b)(d-r_s+r_b)(d+r_s+r_b))/2.
+    # Inputs were converted from these exact binary floats with mp.mpf.
+    actual = apparent_disk_illumination_fraction(sun, body, separation)
+    assert actual == pytest.approx(expected, rel=0.0, abs=1e-14)
+
+
+@pytest.mark.parametrize("body", [0.26, 1.24])
+@pytest.mark.parametrize("contact", ["internal", "external"])
+def test_realistic_lunar_disk_contacts_have_no_false_illumination_spikes(
+    body: float, contact: str
+) -> None:
+    sun = 0.00465
+    centre = body - sun if contact == "internal" else body + sun
+    separations = centre + np.linspace(-1e-11, 1e-11, 1001)
+    fractions = np.array(
+        [apparent_disk_illumination_fraction(sun, body, value) for value in separations]
+    )
+    assert np.all(np.diff(fractions) >= -1e-15)
+    if contact == "internal":
+        assert np.max(fractions) < 1e-12
+    else:
+        assert np.min(fractions) > 1.0 - 1e-12
+
+
 def test_lunar_eclipse_model_distinguishes_sunward_full_sun_and_antisun_umbra() -> None:
     sun = np.array([ASTRONOMICAL_UNIT_M, 0.0, 0.0])
     sunward = np.array([MOON_MEAN_RADIUS_M + 100_000.0, 0.0, 0.0])

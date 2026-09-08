@@ -13,6 +13,8 @@ NASA low-lunar-orbit experience motivates the metrics used here:
 
 The recent LRO frozen-orbit work specifically describes high-fidelity numerical targeting that suppresses eccentricity and argument-of-periapsis growth, and an observational search based on minimizing spread in periselene-altitude evolution. The GRAIL work treats eccentricity-vector evolution directly as an orbit-design variable. The repository therefore reports both geometric altitude/apsis behaviour and nonsingular eccentricity-vector behaviour.
 
+Propagation failures cannot contribute candidate stability metrics. When `apply_to_uncertainty` is enabled, the minimum reference-altitude constraint also applies to the lowest altitude across uncertainty realizations; this value is retained in their summary.
+
 ## Stability metrics
 
 Each `StabilityCandidate` stores all individual metrics. The combined `ranking.penalty` is only a configurable ordering aid.
