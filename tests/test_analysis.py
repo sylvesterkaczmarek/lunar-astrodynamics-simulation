@@ -146,3 +146,37 @@ def test_orbit_history_reports_osculating_apsides() -> None:
         expected_aposelene - MOON_MEAN_RADIUS_M,
         atol=1e-8,
     )
+
+
+def test_detrended_statistics_are_independent_of_the_time_origin() -> None:
+    relative_times = np.arange(3, dtype=float)
+    values = np.array([1.0, 1.3, 1.6])
+    relative = scalar_evolution_statistics(relative_times, values)
+    absolute = scalar_evolution_statistics(1e9 + relative_times, values)
+    assert absolute == relative
+    assert absolute.detrended_rms < 1e-15
+    assert absolute.detrended_peak_to_peak < 1e-15
+
+
+def test_orbit_history_resolves_small_changes_in_orbital_plane() -> None:
+    inclinations = np.array([0.0, 1e-9, 2e-9])
+    states = np.column_stack([
+        state_from_elements(ClassicalElements(1.9e6, 0.03, inc, 0.4, 0.7, 1.0), MU)
+        for inc in inclinations
+    ])
+    history = orbit_history(np.array([0.0, 100.0, 200.0]), states, MU)
+    np.testing.assert_allclose(history.orbital_plane_change_rad, inclinations, rtol=1e-14, atol=1e-24)
+    assert history.statistics.orbital_plane_direction.maximum_change_rad == pytest.approx(2e-9, rel=1e-14)
+
+
+def test_zero_apsis_threshold_does_not_define_the_direction_of_a_zero_vector() -> None:
+    # Unit circular states produce exactly zero eccentricity, without lunar-unit roundoff.
+    states = np.array([[1., 0., 0., 0., 1., 0.], [0., 1., 0., -1., 0., 0.]]).T
+    with np.errstate(divide="raise", invalid="raise"):
+        history = orbit_history(
+            np.array([0.0, 1.0]), states, 1.0,
+            reference_radius_m=0.5, apsis_eccentricity_threshold=0.0,
+        )
+    assert not np.any(history.apsis_defined)
+    assert history.statistics.apsidal_direction.defined_fraction == 0.0
+    assert history.statistics.apsidal_direction.maximum_change_rad is None

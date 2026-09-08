@@ -82,17 +82,18 @@ z_hat = r_s / |r_s|
 elevation = asin((rho / |rho|) dot z_hat)
 ```
 
-A spacecraft is visible only when all selected conditions are satisfied:
+A spacecraft must be at or above `minimum_elevation_deg`. The obstruction model depends on the selected analysis:
 
-1. elevation is at or above `minimum_elevation_deg`;
-2. the site-to-spacecraft line segment is not blocked by the spherical lunar reference surface;
-3. if terrain-aware LOS is enabled, the sampled line segment remains above the supplied terrain surface.
+- Spherical analysis requires the site-to-spacecraft line segment to clear the lunar reference sphere.
+- Terrain-aware analysis requires the sampled line segment and spacecraft endpoint to clear the supplied terrain surface.
 
 The spherical-limb test computes the minimum radius reached by the finite line segment. It therefore rejects a far-side spacecraft even if a numerical angle calculation alone were mishandled.
 
+In terrain-aware analysis, physical terrain determines obstruction. Depressions below the reference sphere can therefore have valid overhead access. `SiteObservation.spherical_los_clear` retains the independent reference-sphere diagnostic, even when terrain-aware visibility is true. Spherical analysis retains its stated sphere and is unsuitable for sites below that sphere; use a compatible terrain model for those sites.
+
 ### Terrain-aware line of sight
 
-For individual sites, `terrain_aware=True` samples the straight site-to-spacecraft ray and compares each point with `TerrainShapeModel.surface_radius_m(...)`.
+For individual sites, `terrain_aware=True` samples the straight site-to-spacecraft ray and compares each point with `TerrainShapeModel.surface_radius_m(...)`. The exact closest point to the lunar centre is also checked, so shallow spherical-limb intersections cannot fall between uniform samples. The site may lie on the surface; the spacecraft endpoint must be above it. A clearance margin must be finite and non-negative, and the number of interior LOS samples must be an integer of at least two.
 
 ```python
 access = analyze_site_access(
@@ -110,6 +111,8 @@ access = analyze_site_access(
 This is more useful than a purely local horizon when a mountain or crater rim lies between the site and spacecraft, but it remains a sampled radial-grid test. It is **not** a SPICE DSK or triangular-mesh ray trace, and it cannot recover relief below the terrain grid or LOS sampling resolution.
 
 Gridded coverage can use terrain elevation to place grid sites at the local surface radius, but it intentionally does not perform an expensive intervening-terrain ray trace for every cell and every epoch. Use site-level terrain-aware analysis for surface locations where horizon masking matters.
+
+Terrain-based grid heights account for both the terrain and grid reference radii, so changing the altitude datum does not move the physical surface sites. The grid's reference sphere still defines its spherical obstruction model, including the below-sphere limitation above.
 
 ## Access windows
 

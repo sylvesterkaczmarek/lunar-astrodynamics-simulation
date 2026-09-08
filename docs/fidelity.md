@@ -188,6 +188,8 @@ FidelityTolerance(
 )
 ```
 
+Each selection must use criteria available in its report. Acceleration and trajectory tolerances require separate calls; supplying both kinds to a single report raises an error. Missing or non-finite requested measurements cannot satisfy a tolerance.
+
 The selected degree is only defensible for the position set or propagated trajectory represented by that report. A different ground track, epoch, altitude envelope or duration requires revalidation.
 
 ## Fidelity-versus-runtime study

@@ -13,6 +13,8 @@ from lunar_astrodynamics.targeting import (
     StationKeepingPolicy,
     TerminalStateTarget,
     differential_correct,
+    evaluate_orbit_target,
+    finite_difference_jacobian,
     finite_difference_state_transition,
     orbit_parameter_sensitivity,
     simulate_impulsive_stationkeeping,
@@ -233,7 +235,8 @@ def test_stationkeeping_no_burns_when_thresholds_are_not_violated() -> None:
     assert not result.impacted
 
 
-def test_stationkeeping_applies_and_accounts_for_impulsive_correction() -> None:
+@pytest.mark.parametrize("components", [("radial", "transverse"), ("transverse", "radial")])
+def test_stationkeeping_applies_and_accounts_for_impulsive_correction(components) -> None:
     dynamics = _central_dynamics()
     a = R + 100_000.0
     eccentricity = 10_000.0 / a
@@ -257,7 +260,7 @@ def test_stationkeeping_applies_and_accounts_for_impulsive_correction() -> None:
             minimum_periselene_altitude_m=95_000.0,
             target_periselene_altitude_m=100_000.0,
             target_aposelene_altitude_m=110_000.0,
-            correction_components=("radial", "transverse"),
+            correction_components=components,
             maximum_delta_v_per_maneuver_m_s=20.0,
             samples_per_interval=5,
         ),
@@ -269,6 +272,17 @@ def test_stationkeeping_applies_and_accounts_for_impulsive_correction() -> None:
     assert first.time_s == pytest.approx(0.0)
     assert first.utc_time == "2026-08-17T00:00:00+00:00"
     assert first.delta_v_magnitude_m_s > 0.0
+    radial = state[:3] / np.linalg.norm(state[:3])
+    normal = np.cross(state[:3], state[3:])
+    normal /= np.linalg.norm(normal)
+    transverse = np.cross(normal, radial)
+    assert first.delta_v_rtn_m_s.shape == (3,)
+    assert first.delta_v_rtn_m_s[2] == 0.0
+    np.testing.assert_allclose(
+        np.column_stack((radial, transverse, normal)) @ first.delta_v_rtn_m_s,
+        first.delta_v_inertial_m_s,
+        atol=1e-12,
+    )
     assert first.post_periselene_altitude_m > first.pre_periselene_altitude_m
     assert result.total_delta_v_m_s >= first.delta_v_magnitude_m_s
     assert result.maximum_delta_v_m_s <= result.total_delta_v_m_s
@@ -300,3 +314,146 @@ def test_stationkeeping_fails_cleanly_when_required_burn_exceeds_limit() -> None
     assert result.terminated_early
     assert "exceeds configured limit" in result.termination_reason
     assert result.maneuver_count == 0
+
+
+def test_stationkeeping_does_not_count_burns_that_leave_threshold_violated() -> None:
+    state = _point(a_altitude_m=100_000.0, eccentricity=0.01).initial_state(MU)
+    result = simulate_impulsive_stationkeeping(
+        state, 900.0, _central_dynamics(),
+        StationKeepingPolicy(
+            check_interval_s=300.0,
+            minimum_periselene_altitude_m=95_000.0,
+            samples_per_interval=5,
+        ),
+        propagation=_propagation(),
+    )
+    # Default targets restore the initial apsides. Here those apsides already
+    # breach the threshold, so their zero-residual burn cannot restore safety.
+    assert result.terminated_early
+    assert "leaves trigger thresholds violated" in result.termination_reason
+    assert result.achieved_duration_s == 0.0
+    assert result.maneuver_count == 0
+    assert result.total_delta_v_m_s == 0.0
+    np.testing.assert_array_equal(result.states[:, 0], state)
+
+
+@pytest.mark.parametrize("explicit_targets", [True, False])
+def test_stationkeeping_semimajor_trigger_uses_configured_target_or_initial_orbit(explicit_targets) -> None:
+    a = R + 100_000.0
+    state = state_from_elements(
+        ClassicalElements(a, 10_000.0 / a, np.deg2rad(30.0), 0.0, 0.0, np.deg2rad(120.0)),
+        MU,
+    )
+    result = simulate_impulsive_stationkeeping(
+        state, 600.0, _central_dynamics(),
+        StationKeepingPolicy(
+            check_interval_s=300.0,
+            maximum_semi_major_axis_deviation_m=1_000.0,
+            target_periselene_altitude_m=100_000.0 if explicit_targets else None,
+            target_aposelene_altitude_m=110_000.0 if explicit_targets else None,
+            samples_per_interval=5,
+        ),
+        propagation=_propagation(),
+    )
+    assert not result.terminated_early
+    assert result.achieved_duration_s == 600.0
+    if explicit_targets:
+        assert result.maneuver_count == 1
+        burn = result.maneuvers[0]
+        assert burn.time_s == 0.0
+        assert burn.trigger_reasons == ("semimajor-axis deviation above threshold",)
+        post_a_altitude = 0.5 * (burn.post_periselene_altitude_m + burn.post_aposelene_altitude_m)
+        assert post_a_altitude == pytest.approx(105_000.0, abs=25.0)
+    else:
+        assert result.maneuver_count == 0
+
+
+@pytest.mark.parametrize("start", [0.0, 1.0])
+def test_bounded_corrector_uses_valid_one_sided_derivatives(start) -> None:
+    seen = []
+
+    def residual(values):
+        value = values[0]
+        assert 0.0 <= value <= 1.0
+        seen.append(value)
+        return np.array([value * value + value - 0.75])
+
+    result = differential_correct(
+        [start], residual,
+        (CorrectorVariable("x", 0.01, 1.0, lower_bound=0.0, upper_bound=1.0),),
+    )
+    assert result.converged
+    assert result.final_variables[0] == pytest.approx(0.5, abs=1e-5)
+    assert min(seen) >= 0.0
+    assert max(seen) <= 1.0
+
+
+def test_finite_difference_shrinks_stencil_to_fit_narrow_bounds() -> None:
+    def evaluate(values):
+        assert 0.0 <= values[0] <= 1e-3
+        return np.array([2.0 * values[0] + values[0] ** 2])
+
+    result = finite_difference_jacobian(
+        evaluate, [0.0], [1.0], lower_bounds=[0.0], upper_bounds=[1e-3],
+    )
+    assert result.jacobian[0, 0] == pytest.approx(2.0)
+    assert result.all_columns_stable
+    assert result.diagnostics[0].selected_step < 1e-3
+
+
+def test_finite_difference_rejects_steps_lost_to_rounding() -> None:
+    with pytest.raises(ValueError, match="not representable"):
+        finite_difference_jacobian(lambda value: value, [1e20], [1.0])
+
+
+def test_finite_difference_uses_actual_rounded_offsets() -> None:
+    result = finite_difference_jacobian(lambda value: value, [1e16], [3.0])
+    assert result.jacobian[0, 0] == 1.0
+    assert result.all_columns_stable
+
+
+@pytest.mark.parametrize("lower, upper, step", [(-1e16, -1.0, 1e16), (-1.0, 0.1, 1.0)])
+def test_finite_difference_never_evaluates_past_bounds_after_rounding(lower, upper, step) -> None:
+    def evaluate(values):
+        assert lower <= values[0] <= upper
+        return values.copy()
+
+    # The largest forward coordinate rounds past the upper bound. Clamp it
+    # before calling evaluate, then retain a correct derivative of identity.
+    result = finite_difference_jacobian(
+        evaluate, [lower], [step], lower_bounds=[lower], upper_bounds=[upper],
+    )
+    assert result.jacobian[0, 0] == pytest.approx(1.0)
+    assert result.all_columns_stable
+
+
+def test_circular_orbit_sensitivity_respects_eccentricity_lower_bound() -> None:
+    point = _point(eccentricity=0.0)
+    result = orbit_parameter_sensitivity(
+        point, 60.0, _central_dynamics(),
+        variables=(CorrectorVariable("eccentricity", 1e-5, 0.01, lower_bound=0.0),),
+        outputs=("final_periselene_altitude_m", "final_aposelene_altitude_m"),
+        sample_count=5, propagation=_propagation(),
+    )
+    np.testing.assert_allclose(
+        result.jacobian[:, 0], [-point.semi_major_axis_m, point.semi_major_axis_m],
+        rtol=1e-5,
+    )
+    assert result.all_columns_stable
+
+
+def test_orbit_target_rejects_failed_partial_propagation(monkeypatch) -> None:
+    from lunar_astrodynamics import targeting
+    from lunar_astrodynamics.propagation import propagate_with_acceleration
+
+    dynamics = _central_dynamics()
+    partial = propagate_with_acceleration(
+        _point().initial_state(MU), 30.0, dynamics.acceleration,
+        collision_radius_m=dynamics.collision_radius_m,
+        sample_times_s=[0.0, 15.0, 30.0],
+    )
+    partial.success = False
+    partial.message = "Required step size is less than spacing between numbers."
+    monkeypatch.setattr(targeting, "propagate_with_acceleration", lambda *args, **kwargs: partial)
+    with pytest.raises(ValueError, match="targeting propagation failed"):
+        evaluate_orbit_target(_point(), 300.0, dynamics, sample_count=5)

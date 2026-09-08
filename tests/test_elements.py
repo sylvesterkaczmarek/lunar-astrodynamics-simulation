@@ -163,3 +163,21 @@ def test_nonfinite_mu_is_rejected() -> None:
         state_from_elements(elements, np.nan)
     with pytest.raises(ValueError, match="finite and positive"):
         modified_equinoctial_from_state(state_from_elements(elements, MU), np.nan)
+
+
+@pytest.mark.parametrize("inclination", [1e-11, 1e-9, np.pi - 1e-9])
+def test_classical_round_trip_preserves_near_equatorial_inclination(inclination: float) -> None:
+    original = ClassicalElements(1.9e6, 0.03, inclination, 0.4, 0.7, 1.0)
+    state = state_from_elements(original, MU)
+    recovered = elements_from_state(state, MU)
+    assert recovered.inclination_rad == pytest.approx(inclination, abs=5e-16, rel=1e-14)
+    np.testing.assert_allclose(state_from_elements(recovered, MU), state, rtol=1e-14, atol=5e-9)
+
+
+@pytest.mark.parametrize("inclination", [np.pi, np.pi - 1e-8])
+def test_classical_to_mee_rejects_the_same_retrograde_singularity_as_cartesian(inclination: float) -> None:
+    classical = ClassicalElements(1.9e6, 0.03, inclination, 0.4, 0.7, 1.0)
+    with pytest.raises(ValueError, match="retrograde-equatorial"):
+        modified_equinoctial_from_classical(classical)
+    with pytest.raises(ValueError, match="retrograde-equatorial"):
+        modified_equinoctial_from_state(state_from_elements(classical, MU), MU)

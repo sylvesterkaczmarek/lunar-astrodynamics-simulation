@@ -35,3 +35,12 @@ def test_j2_equatorial_direction_matches_closed_form() -> None:
 def test_origin_is_rejected() -> None:
     with pytest.raises(ValueError):
         central_acceleration([0.0, 0.0, 0.0], GRGM1200A_J2.mu_m3_s2)
+
+
+@pytest.mark.parametrize("invalid_value", [np.nan, np.inf, -np.inf])
+@pytest.mark.parametrize("parameter", ["mu", "radius"])
+def test_j2_rejects_nonfinite_model_parameters(parameter: str, invalid_value: float) -> None:
+    mu = invalid_value if parameter == "mu" else GRGM1200A_J2.mu_m3_s2
+    radius = invalid_value if parameter == "radius" else GRGM1200A_J2.reference_radius_m
+    with pytest.raises(ValueError, match="finite and positive"):
+        j2_acceleration([1.9e6, 0.0, 0.0], mu, radius, GRGM1200A_J2.j2)

@@ -154,7 +154,8 @@ def linear_rate(time_s: FloatArray, values: FloatArray) -> float:
         raise ValueError("time and value histories must be matching one-dimensional arrays")
     if not np.all(np.isfinite(t)) or not np.all(np.isfinite(value)):
         raise ValueError("time and value histories must be finite")
-    centered_t = t - np.mean(t)
+    relative_t = t - t[0]
+    centered_t = relative_t - np.mean(relative_t)
     centered_value = value - np.mean(value)
     denominator = float(np.dot(centered_t, centered_t))
     if denominator == 0.0:
@@ -171,9 +172,9 @@ def scalar_evolution_statistics(time_s: FloatArray, values: FloatArray) -> Scala
     if not np.all(np.isfinite(t)) or not np.all(np.isfinite(value)):
         raise ValueError("time and value histories must be finite")
     rate = linear_rate(t, value)
-    intercept = float(np.mean(value) - rate * np.mean(t))
-    trend = intercept + rate * t
-    residual = value - trend
+    relative_t = t - t[0]
+    centered_t = relative_t - np.mean(relative_t)
+    residual = (value - np.mean(value)) - rate * centered_t
     return ScalarEvolutionStatistics(
         initial=float(value[0]),
         final=float(value[-1]),
@@ -215,7 +216,8 @@ def _direction_changes(vectors: FloatArray, defined: BoolArray) -> tuple[FloatAr
     reference = vectors[:, reference_index]
     for index in indices:
         cosine = float(np.dot(reference, vectors[:, index]))
-        changes[index] = float(np.arccos(np.clip(cosine, -1.0, 1.0)))
+        sine = float(np.linalg.norm(np.cross(reference, vectors[:, index])))
+        changes[index] = float(np.arctan2(sine, cosine))
     return changes, DirectionEvolutionStatistics(
         defined_fraction=float(indices.size / defined.size),
         reference_time_s=float(reference_index),
@@ -324,7 +326,7 @@ def orbit_history(
     mee_k = np.array([item.k for item in equinoctial])
     mee_longitude = np.unwrap(np.array([item.true_longitude_rad for item in equinoctial]))
 
-    apsis_defined = eccentricity >= apsis_eccentricity_threshold
+    apsis_defined = (eccentricity > 0.0) & (eccentricity >= apsis_eccentricity_threshold)
     apsidal_direction = np.full_like(eccentricity_vector, np.nan)
     if np.any(apsis_defined):
         apsidal_direction[:, apsis_defined] = (

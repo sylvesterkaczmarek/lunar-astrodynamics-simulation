@@ -16,6 +16,16 @@ FloatArray = NDArray[np.float64]
 AccelerationFunction = Callable[[float, FloatArray], FloatArray]
 
 
+def _evaluate_acceleration(
+    acceleration: AccelerationFunction, time_s: float, position_m: FloatArray
+) -> FloatArray:
+    """Enforce the force callback's vector contract before NumPy assignment."""
+    value = np.asarray(acceleration(time_s, position_m), dtype=float)
+    if value.shape != (3,) or not np.all(np.isfinite(value)):
+        raise ValueError("acceleration must return a finite three-vector with shape (3,)")
+    return value
+
+
 @dataclass(frozen=True)
 class PropagationSettings:
     method: str = "DOP853"
@@ -136,7 +146,7 @@ def propagate_with_acceleration(
     def rhs(time_s: float, state: FloatArray) -> FloatArray:
         derivative = np.empty(6, dtype=float)
         derivative[:3] = state[3:]
-        derivative[3:] = acceleration(time_s, state[:3])
+        derivative[3:] = _evaluate_acceleration(acceleration, time_s, state[:3])
         return derivative
 
     return solve_ivp(

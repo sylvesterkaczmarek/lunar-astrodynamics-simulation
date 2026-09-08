@@ -173,7 +173,7 @@ result = propagate_gravity_ensemble(
 )
 ```
 
-Every member receives the same propagation settings, initial state, frame transformation, collision boundary, and output sampling times.
+Every member receives the same propagation settings, initial state, frame transformation, collision boundary, and output sampling times. The initial and requested final epochs are included even when custom sample times omit them. If impact occurs, its exact event state is included in the metrics. An integration failure aborts the ensemble summary, so a partial trajectory cannot be counted as a completed realization.
 
 For each trajectory the library reports:
 
@@ -192,7 +192,7 @@ Eccentricity and apsis calculations are obtained directly from Cartesian positio
 
 ## Altitude convention
 
-Until terrain-aware topography is added, altitude means radial distance minus a caller-selected reference radius. The default is the lunar mean radius used elsewhere in the package.
+For this ensemble API, altitude means radial distance minus a caller-selected reference radius. The default is the lunar mean radius used elsewhere in the package.
 
 Consequently:
 

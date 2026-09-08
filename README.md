@@ -230,13 +230,18 @@ See [`docs/independent_validation.md`](docs/independent_validation.md) and [`res
 
 ## Tests
 
-The repository contains **173 automated tests** across gravity, uncertainty, terrain, force models, frames, orbital mathematics, stability search, targeting, fidelity, access/coverage, configuration, orchestration and the CLI.
+```bash
+python -m pip install -e .[dev,spice,terrain]
+python -m pytest
+```
 
-GitHub Actions runs the test matrix on Python 3.10, 3.12 and 3.13. The Python 3.12 job also runs deterministic scientific smoke examples, including the configured mission workflow.
+The tests cover propagation failures, exact impact-state reporting, terrain visibility, near-contact eclipses, small-angle orbital diagnostics and bounded targeting. Invalid force callbacks and incompatible mission frames produce explicit errors. Optional SPICE and netCDF loader checks run when their dependencies are installed.
+
+GitHub Actions runs the test matrix on Python 3.10 through 3.14. The Python 3.12 job also exercises SPICE and netCDF integration and deterministic scientific examples, including the configured mission workflow. A separate job builds and checks the distributions and runs the installed command outside the source checkout.
 
 ## External data policy
 
-Normal installation and CI do not require large NASA datasets or network access.
+The installed package and test suite do not fetch external datasets during normal use. Large NASA products are optional downloads.
 
 Download scripts are provided for the public products used by specific analyses:
 

@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 import numpy as np
 import pytest
 
@@ -332,3 +334,68 @@ def test_force_model_comparison_accepts_arbitrary_search_dynamics_cases() -> Non
     )
     assert report.entries[0].final_position_difference_m is not None
     assert report.entries[0].final_position_difference_m > 0.0
+
+
+@pytest.mark.parametrize(
+    "trajectory_metric",
+    [
+        "maximum_final_position_difference_m",
+        "maximum_final_velocity_difference_m_s",
+        "maximum_periselene_variation_difference_m",
+        "maximum_eccentricity_variation_difference",
+        "maximum_minimum_terrain_clearance_difference_m",
+        "maximum_lifetime_difference_s",
+    ],
+)
+def test_acceleration_selection_does_not_silently_ignore_trajectory_limits(trajectory_metric) -> None:
+    report = compare_harmonic_accelerations(
+        _j2_model(), _identity, _state()[:3], truncations=((0, 0),), benchmark_repetitions=1
+    )
+    tolerance = FidelityTolerance(
+        maximum_absolute_acceleration_error_m_s2=1.0, **{trajectory_metric: 0.0}
+    )
+    with pytest.raises(ValueError, match="cannot assess trajectory tolerances"):
+        select_lowest_harmonic_truncation(report, tolerance)
+
+
+@pytest.mark.parametrize(
+    "acceleration_metric",
+    ["maximum_absolute_acceleration_error_m_s2", "maximum_relative_acceleration_error"],
+)
+def test_trajectory_selection_does_not_silently_ignore_acceleration_limits(acceleration_metric) -> None:
+    report = compare_harmonic_trajectories(
+        _j2_model(), _identity, _state(), 10.0, truncations=((0, 0),), sample_count=3
+    )
+    tolerance = FidelityTolerance(
+        maximum_final_position_difference_m=1.0, **{acceleration_metric: 0.0}
+    )
+    with pytest.raises(ValueError, match="cannot assess acceleration tolerances"):
+        select_lowest_harmonic_truncation(report, tolerance)
+
+
+@pytest.mark.parametrize("invalid_error", [np.nan, np.inf, -np.inf, -1.0])
+def test_acceleration_selection_requires_a_valid_error_measurement(invalid_error) -> None:
+    report = compare_harmonic_accelerations(
+        _j2_model(), _identity, _state()[:3], truncations=((0, 0),), benchmark_repetitions=1
+    )
+    unavailable = replace(report.entries[0], maximum_absolute_error_m_s2=invalid_error)
+    report = replace(report, entries=(unavailable,))
+    selection = select_lowest_harmonic_truncation(
+        report, FidelityTolerance(maximum_absolute_acceleration_error_m_s2=1.0)
+    )
+    assert not selection.satisfied
+    assert selection.selected_truncation is None
+
+
+@pytest.mark.parametrize("invalid_error", [None, np.nan, np.inf, -np.inf, -1.0])
+def test_trajectory_selection_requires_a_valid_error_measurement(invalid_error) -> None:
+    report = compare_harmonic_trajectories(
+        _j2_model(), _identity, _state(), 10.0, truncations=((0, 0),), sample_count=3
+    )
+    unavailable = replace(report.entries[0], final_position_difference_m=invalid_error)
+    report = replace(report, entries=(unavailable,))
+    selection = select_lowest_harmonic_truncation(
+        report, FidelityTolerance(maximum_final_position_difference_m=1.0)
+    )
+    assert not selection.satisfied
+    assert selection.selected_truncation is None

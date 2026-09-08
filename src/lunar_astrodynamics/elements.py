@@ -221,7 +221,7 @@ def orbital_vectors_from_state(state: ArrayLike, mu_m3_s2: float) -> OrbitalVect
     else:
         semi_major_axis = float(-mu / (2.0 * energy))
     semilatus_rectum = float(angular_momentum_norm**2 / mu)
-    inclination = float(np.arccos(np.clip(plane_normal[2], -1.0, 1.0)))
+    inclination = float(np.arctan2(np.hypot(plane_normal[0], plane_normal[1]), plane_normal[2]))
     return OrbitalVectors(
         eccentricity_vector=eccentricity_vector,
         specific_angular_momentum_vector_m2_s=angular_momentum,
@@ -310,6 +310,10 @@ def state_from_modified_equinoctial(
 
 def modified_equinoctial_from_classical(elements: ClassicalElements) -> ModifiedEquinoctialElements:
     """Convert an explicitly supplied classical elliptic orbit to MEE."""
+    if 1.0 + np.cos(elements.inclination_rad) <= _MEE_RETROGRADE_DENOM_EPS:
+        raise ValueError(
+            "prograde modified equinoctial elements are singular at the retrograde-equatorial i=pi limit"
+        )
     longitude_of_periapsis = elements.raan_rad + elements.argument_of_periapsis_rad
     return ModifiedEquinoctialElements(
         semilatus_rectum_m=elements.semilatus_rectum_m,

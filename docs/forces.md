@@ -154,7 +154,7 @@ The visible solar fraction is determined from the overlap area of the two appare
 - annular eclipse: subtract the Moon disk area from the solar disk area;
 - partial eclipse: subtract the standard two-circle intersection area.
 
-This gives continuous penumbra transitions and a true full-umbra state instead of switching SRP at a cylindrical shadow boundary.
+The partial-overlap calculation uses stable circle-segment arithmetic, including near contact when the apparent Moon is much larger than the Sun. Regression fixtures compare these cases with 80-decimal reference calculations. This avoids artificial illumination spikes at shadow entry and exit while retaining the same finite-disk model.
 
 NASA references describing apparent-radius and overlap-area eclipse geometry:
 

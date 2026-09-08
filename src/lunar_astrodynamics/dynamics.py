@@ -45,8 +45,13 @@ def j2_acceleration(
     radius = float(np.linalg.norm(r))
     if radius == 0.0:
         raise ValueError("position cannot be the central-body origin")
-    if mu_m3_s2 <= 0.0 or reference_radius_m <= 0.0:
-        raise ValueError("mu_m3_s2 and reference_radius_m must be positive")
+    if (
+        not np.isfinite(mu_m3_s2)
+        or not np.isfinite(reference_radius_m)
+        or mu_m3_s2 <= 0.0
+        or reference_radius_m <= 0.0
+    ):
+        raise ValueError("mu_m3_s2 and reference_radius_m must be finite and positive")
     if not np.isfinite(j2):
         raise ValueError("j2 must be finite")
 

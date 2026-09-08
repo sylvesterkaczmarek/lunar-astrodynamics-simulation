@@ -142,6 +142,10 @@ observer = "MOON"
 
 The workflow furnishes these kernels, creates a geometric `SpiceEphemeris`, and records the loaded kernel pool in result provenance. Kernel paths remain user-controlled and are never silently downloaded during a normal analysis run.
 
+The origin must be the Moon (`MOON` or NAIF ID `301`), and `inertial_frame` must be a built-in SPICE class 1 frame such as `J2000` or `ECLIPJ2000`. Rotating axes need additional inertial forces, which this propagator does not include. An explicit `terrain.frame` must match `surface_frame`, because that frame's rotation is used for terrain queries.
+
+Call `context.close()` after use. Closing is idempotent and unloads the mission's own kernel loads, including meta-kernel children, while preserving files loaded by the caller. Failed setup also undoes its loads. SPICE has a process-wide kernel pool, so concurrently modifying it remains unsupported. As documented by [NAIF UNLOAD](https://naif.jpl.nasa.gov/pub/naif/toolkit_docs/C/cspice/unload_c.html), unloading text kernels rebuilds the pool and removes values inserted directly through kernel-pool assignment functions; use furnished text kernels for persistent values.
+
 ## Earth and Sun perturbations
 
 ```toml

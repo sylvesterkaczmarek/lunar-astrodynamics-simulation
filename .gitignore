@@ -14,3 +14,7 @@ dist/
 .ipynb_checkpoints/
 data/*.tab
 data/*.lbl
+
+# Downloaded public mission and independent-validation products
+/data/example_mission/
+/data/validation/

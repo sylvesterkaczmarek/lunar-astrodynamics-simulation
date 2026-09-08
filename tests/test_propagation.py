@@ -140,3 +140,53 @@ def test_invalid_propagation_settings_are_rejected() -> None:
         PropagationSettings(rtol=np.nan)
     with pytest.raises(ValueError, match="max_step_s"):
         PropagationSettings(max_step_s=0.0)
+
+
+@pytest.mark.parametrize(
+    "returned_acceleration",
+    [0.1, [0.1], [0.1, 0.2], [[0.1, 0.2, 0.3]], [0.0, np.nan, 0.0], [0.0, 0.0, np.inf]],
+)
+def test_acceleration_callback_requires_a_finite_three_vector(returned_acceleration) -> None:
+    from lunar_astrodynamics import propagate_with_acceleration
+
+    state0 = state_from_elements(_validation_orbit(), GRGM1200A_J2.mu_m3_s2)
+    with pytest.raises(ValueError, match="acceleration must return a finite three-vector"):
+        propagate_with_acceleration(
+            state0,
+            1.0,
+            lambda _t, _r: returned_acceleration,
+            collision_radius_m=GRGM1200A_J2.collision_radius_m,
+        )
+
+
+def test_acceleration_callback_is_validated_after_initial_evaluation() -> None:
+    from lunar_astrodynamics import propagate_with_acceleration
+
+    state0 = state_from_elements(_validation_orbit(), GRGM1200A_J2.mu_m3_s2)
+    with pytest.raises(ValueError, match="acceleration must return a finite three-vector"):
+        propagate_with_acceleration(
+            state0,
+            1.0,
+            lambda t, _r: [0.0, 0.0, 0.0] if t < 0.5 else [np.nan, 0.0, 0.0],
+            collision_radius_m=GRGM1200A_J2.collision_radius_m,
+        )
+
+
+def test_acceleration_callback_accepts_vector_lists_without_changing_the_trajectory() -> None:
+    from lunar_astrodynamics import propagate_with_acceleration
+
+    state0 = np.array([1.9e6, 0.0, 0.0, 0.0, 1600.0, 0.0])
+    acceleration = np.array([0.1, -0.2, 0.3])
+    duration = 10.0
+    solution = propagate_with_acceleration(
+        state0,
+        duration,
+        lambda _t, _r: acceleration.tolist(),
+        collision_radius_m=GRGM1200A_J2.collision_radius_m,
+    )
+    assert solution.success
+    np.testing.assert_allclose(
+        solution.y[:3, -1], state0[:3] + duration * state0[3:] + 0.5 * acceleration * duration**2,
+        rtol=0.0, atol=1e-8,
+    )
+    np.testing.assert_allclose(solution.y[3:, -1], state0[3:] + acceleration * duration, atol=1e-10)
